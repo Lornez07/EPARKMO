@@ -1,0 +1,37 @@
+{
+  "flutter": {
+    "platforms": {
+      "android": {
+        "default": {
+          "projectId": "e-park-mo-fe42a",
+          "appId": "1:253000162549:android:bbc5d26d66e7b130aa39bc",
+          "fileOutput": "android/app/google-services.json"
+        }
+      },
+      "dart": {
+        "lib/firebase_options.dart": {
+          "projectId": "e-park-mo-fe42a",
+          "configurations": {
+            "android": "1:253000162549:android:bbc5d26d66e7b130aa39bc",
+            "ios": "1:253000162549:ios:a0dd1a9275ea1de3aa39bc",
+            "web": "1:253000162549:web:61ca761a4e14f1eaaa39bc"
+          }
+        }
+      }
+    }
+  },
+  "hosting": {
+    "public": "build/web",
+    "ignore": [
+      "firebase.json",
+      "**/.*",
+      "**/node_modules/**"
+    ],
+    "rewrites": [
+      {
+        "source": "**",
+        "destination": "/index.html"
+      }
+    ]
+  }
+}

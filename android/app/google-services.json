@@ -1,0 +1,48 @@
+{
+  "project_info": {
+    "project_number": "253000162549",
+    "project_id": "e-park-mo-fe42a",
+    "storage_bucket": "e-park-mo-fe42a.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:253000162549:android:bbc5d26d66e7b130aa39bc",
+        "android_client_info": {
+          "package_name": "com.eparkmo.eparkmo"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBSPTAl2myRVHFDXUqOe7Tr4spa5mnXqqk"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:253000162549:android:a63a6b0a6a3116b7aa39bc",
+        "android_client_info": {
+          "package_name": "com.example.epark_mo"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBSPTAl2myRVHFDXUqOe7Tr4spa5mnXqqk"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

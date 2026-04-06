@@ -1,0 +1,212 @@
+import 'dart:ui';
+import 'package:flutter/material.dart';
+import 'package:flutter_animate/flutter_animate.dart';
+import 'package:provider/provider.dart';
+import '../constants/app_constants.dart';
+import '../providers/parking_provider.dart';
+import '../widgets/slot_card.dart';
+import '../widgets/stat_card.dart';
+
+class HomeTab extends StatelessWidget {
+  const HomeTab({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Consumer<ParkingProvider>(
+      builder: (context, provider, _) {
+        return SafeArea(
+          bottom: false,
+          child: CustomScrollView(
+            slivers: [
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding:
+                      const EdgeInsets.fromLTRB(20, 20, 20, 0),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // Header
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'Hello, ${provider.currentUser?.name.split(' ').first ?? 'User'} 👋',
+                                  style: AppTextStyles.headingSmall,
+                                ),
+                                const SizedBox(height: 2),
+                                Text('Parking Overview',
+                                    style: AppTextStyles.displayMedium),
+                              ],
+                            ),
+                          ),
+                          Container(
+                            padding: const EdgeInsets.all(10),
+                            decoration: AppDecorations.glassCard(
+                                borderRadius: 14),
+                            child: const Icon(
+                                Icons.local_parking_rounded,
+                                color: AppColors.primary,
+                                size: 22),
+                          ),
+                        ],
+                      ).animate().fadeIn(duration: 500.ms),
+                      const SizedBox(height: 24),
+
+                      // Stats row
+                      Row(
+                        children: [
+                          Expanded(
+                            child: StatCard(
+                              label: 'Available',
+                              value: provider.availableCount.toString(),
+                              icon: Icons.check_circle_outline_rounded,
+                              color: AppColors.available,
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: StatCard(
+                              label: 'Reserved',
+                              value: provider.reservedCount.toString(),
+                              icon: Icons.bookmark_rounded,
+                              color: AppColors.reserved,
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: StatCard(
+                              label: 'Occupied',
+                              value: provider.occupiedCount.toString(),
+                              icon: Icons.directions_car_rounded,
+                              color: AppColors.occupied,
+                            ),
+                          ),
+                        ],
+                      ).animate(delay: 100.ms).fadeIn(duration: 500.ms),
+                      const SizedBox(height: 24),
+
+                      // Gate status card (only for those with permission)
+                      if (provider.canShowBarrier) ...[
+                        _buildGateCard(provider)
+                            .animate(delay: 200.ms)
+                            .fadeIn(duration: 500.ms),
+                        const SizedBox(height: 24),
+                      ],
+
+                      Text('Parking Slots',
+                          style: AppTextStyles.headingMedium)
+                          .animate(delay: 200.ms).fadeIn(duration: 400.ms),
+                      const SizedBox(height: 14),
+                    ],
+                  ),
+                ),
+              ),
+
+              // Slots grid
+              SliverPadding(
+                padding: const EdgeInsets.fromLTRB(20, 0, 20, 120),
+                sliver: SliverGrid(
+                  delegate: SliverChildBuilderDelegate(
+                    (ctx, i) {
+                      final slot = provider.slots[i];
+                      return SlotCard(slot: slot)
+                          .animate(delay: Duration(milliseconds: 100 + i * 60))
+                          .fadeIn(duration: 400.ms)
+                          .slideY(begin: 0.2, end: 0);
+                    },
+                    childCount: provider.slots.length,
+                  ),
+                  gridDelegate:
+                      const SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: 2,
+                    mainAxisSpacing: 14,
+                    crossAxisSpacing: 14,
+                    childAspectRatio: 1.05,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildGateCard(ParkingProvider provider) {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(20),
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+        child: Container(
+          padding: const EdgeInsets.all(18),
+          decoration: provider.barrierOpen
+              ? AppDecorations.primaryGlassCard(borderRadius: 20)
+              : AppDecorations.glassCard(borderRadius: 20),
+          child: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: (provider.barrierOpen
+                          ? AppColors.available
+                          : AppColors.textMuted)
+                      .withOpacity(0.15),
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: Icon(
+                  Icons.sensor_door_rounded,
+                  color: provider.barrierOpen
+                      ? AppColors.available
+                      : AppColors.textMuted,
+                  size: 26,
+                ),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('Entrance Barrier',
+                        style: AppTextStyles.headingSmall),
+                    Text(
+                      provider.barrierOpen ? 'OPEN' : 'CLOSED',
+                      style: AppTextStyles.bodyMedium.copyWith(
+                        color: provider.barrierOpen
+                            ? AppColors.available
+                            : AppColors.textMuted,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    if (provider.barrierOpen)
+                      Text('Auto-closes in ${AppStrings.barrierAutoCloseSeconds}s',
+                          style: AppTextStyles.bodySmall),
+                  ],
+                ),
+              ),
+              ElevatedButton(
+                onPressed: provider.barrierOpen
+                    ? null
+                    : provider.openBarrier,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.primary,
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 16, vertical: 10),
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12)),
+                ),
+                child: Text(
+                  provider.barrierOpen ? 'Open' : 'Open',
+                  style: AppTextStyles.bodyMedium
+                      .copyWith(color: Colors.white),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
