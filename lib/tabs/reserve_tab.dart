@@ -219,9 +219,9 @@ class _ActiveReservationCardState extends State<_ActiveReservationCard> {
     final progress = remaining.inSeconds /
         (AppStrings.reservationMinutes * 60);
 
-    final urgentColor = remaining.inMinutes < 3
+    final urgentColor = remaining.inMinutes < 5
         ? AppColors.occupied
-        : remaining.inMinutes < 7
+        : remaining.inMinutes < 10
             ? AppColors.reserved
             : AppColors.primary;
 
@@ -382,7 +382,7 @@ class _ActiveReservationCardState extends State<_ActiveReservationCard> {
                           ? null
                           : provider.cancelReservation,
                       icon: const Icon(Icons.cancel_outlined, size: 16),
-                      label: const Text('Cancel'),
+                      label: const Text('Cancel Booking'),
                       style: OutlinedButton.styleFrom(
                         foregroundColor: AppColors.occupied,
                         side: BorderSide(
@@ -400,9 +400,9 @@ class _ActiveReservationCardState extends State<_ActiveReservationCard> {
                       onPressed: provider.isLoading
                           ? null
                           : provider.confirmArrival,
-                      icon: const Icon(Icons.directions_car_rounded,
+                      icon: const Icon(Icons.sensor_door_rounded,
                           size: 16),
-                      label: const Text("I've Arrived"),
+                      label: const Text("Open Barrier"),
                       style: ElevatedButton.styleFrom(
                         backgroundColor: AppColors.available,
                         padding:
