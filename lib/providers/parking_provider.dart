@@ -160,7 +160,18 @@ class ParkingProvider extends ChangeNotifier {
           status: ReservationStatus.active,
           otp: data['otp'],
         );
-        _startExpiryTimer();
+
+        // ─── Lazy Cleanup ──────────────────────────────────────────────────
+        // If app just fetched this but it's already expired, clean it up NOW.
+        if (_activeReservation!.remaining == Duration.zero) {
+           _service.expireReservation(
+            slotId: _activeReservation!.slotId,
+            slotNumber: _activeReservation!.slotNumber,
+            user: _currentUser!,
+          );
+        } else {
+          _startExpiryTimer();
+        }
       } else {
         _activeReservation = null;
         _expiryTimer?.cancel();
