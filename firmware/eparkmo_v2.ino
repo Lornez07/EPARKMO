@@ -427,15 +427,14 @@ void handleGate(int irPin, Servo &servo,
         confirmCount = 0;
         detectedAt   = 0;
         clearAt      = 0;
+        // ← Removed the early return, continue to check for new app triggers
       }
     }
-    return;
-  }
+    // ← Removed the return statement
+}
 
-  if (isEntrance) {
-    // ── FIX v2: App-triggered open ──
-    // No longer checks hasReservedSlot() — the app OTP verification
-    // already confirms the user is legitimate before setting isOpen:true
+// ── Now check for NEW triggers even if we just closed ──
+if (isEntrance) {
     if (reservationTrigger) {
       Serial.println(">> App trigger — Opening entrance!");
       showGateStatus(true, true);
