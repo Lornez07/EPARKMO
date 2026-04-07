@@ -275,7 +275,11 @@ class ParkingProvider extends ChangeNotifier {
   }
 
   Future<void> confirmArrival() async {
-    if (_activeReservation == null || _currentUser == null) return;
+    print('🚪 confirmArrival() called');
+    if (_activeReservation == null || _currentUser == null) {
+      print('❌ Missing active reservation or user');
+      return;
+    }
     _setLoading(true);
     try {
       await _service.confirmArrival(
