@@ -47,6 +47,13 @@ class ParkingService {
     });
   }
 
+  Stream<bool> getExitBarrierStream() {
+    return _db.collection('barrier').doc('exit').snapshots().map((doc) {
+      if (!doc.exists) return false;
+      return (doc.data() as Map<String, dynamic>?)?['isOpen'] ?? false;
+    });
+  }
+
   // Active reservation stream for a specific user
   Stream<DocumentSnapshot?> getActiveReservationStream(String userId) {
     return _reservationsRef
@@ -216,24 +223,24 @@ class ParkingService {
 
   /// Open the entrance barrier.
   /// ESP32 polls barrier/gate every ~1.5s (nominal). The ESP32 resets isOpen
-  /// to false after reading it, so we do NOT auto-close from the app side.
-  /// The increased timeout (30s) is a safety fallback only.
-  Future<void> openBarrier(UserModel user) async {
-    await _barrierRef.set({'isOpen': true}, SetOptions(merge: true));
-    await logBarrier(user, true);
+  /// to false after reading it.
+  Future<void> openBarrier(UserModel user, {String barrierType = 'gate'}) async {
+    // We'll use 'gate' for entrance by default
+    await _db.collection('barrier').doc(barrierType).set({'isOpen': true}, SetOptions(merge: true));
+    await logBarrier(user, true, barrierType: barrierType);
 
-    // Safety fallback — ESP32 normally resets this much sooner
+    // Safety fallback
     Future.delayed(
       const Duration(seconds: AppStrings.barrierAutoCloseSeconds),
       () async {
-        await _barrierRef.set({'isOpen': false}, SetOptions(merge: true));
+        await _db.collection('barrier').doc(barrierType).set({'isOpen': false}, SetOptions(merge: true));
       },
     );
   }
 
-  Future<void> logBarrier(UserModel user, bool opened) async {
+  Future<void> logBarrier(UserModel user, bool opened, {String barrierType = 'gate'}) async {
     await _logsRef.add({
-      'action': 'Barrier ${opened ? "opened" : "closed"} by ${user.name}',
+      'action': 'Barrier ${barrierType.toUpperCase()} ${opened ? "opened" : "closed"} by ${user.name}',
       'slotId': '',
       'slotNumber': 0,
       'userId': user.uid,
