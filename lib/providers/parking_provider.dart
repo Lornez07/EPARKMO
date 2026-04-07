@@ -21,6 +21,7 @@ class ParkingProvider extends ChangeNotifier {
   List<ParkingLog> _logs = [];
   Reservation? _activeReservation;
   bool _barrierOpen = false;
+  bool _exitBarrierOpen = false;
   bool _isLoading = false;
   String? _error;
   String? _pendingOtp; // OTP waiting to be verified
@@ -28,6 +29,8 @@ class ParkingProvider extends ChangeNotifier {
   StreamSubscription? _slotsSub;
   StreamSubscription? _logsSub;
   StreamSubscription? _resSub;
+  StreamSubscription? _barrierSub;
+  StreamSubscription? _exitBarrierSub;
   Timer? _barrierTimer;
   Timer? _expiryTimer;
 
@@ -37,6 +40,7 @@ class ParkingProvider extends ChangeNotifier {
   List<ParkingLog> get logs => _logs;
   Reservation? get activeReservation => _activeReservation;
   bool get barrierOpen => _barrierOpen;
+  bool get exitBarrierOpen => _exitBarrierOpen;
   bool get isLoading => _isLoading;
   String? get error => _error;
   String? get pendingOtp => _pendingOtp;
@@ -178,6 +182,17 @@ class ParkingProvider extends ChangeNotifier {
       }
       notifyListeners();
     });
+
+    // Barrier Status — syncs with ESP32 reset
+    _barrierSub = _service.getBarrierStream().listen((isOpen) {
+      _barrierOpen = isOpen;
+      notifyListeners();
+    });
+
+    _exitBarrierSub = _service.getExitBarrierStream().listen((isOpen) {
+       _exitBarrierOpen = isOpen;
+       notifyListeners();
+    });
   }
 
   /// Periodically check if the active reservation has expired
@@ -203,6 +218,8 @@ class ParkingProvider extends ChangeNotifier {
     await _slotsSub?.cancel();
     await _logsSub?.cancel();
     await _resSub?.cancel();
+    await _barrierSub?.cancel();
+    await _exitBarrierSub?.cancel();
     _barrierTimer?.cancel();
     _expiryTimer?.cancel();
   }
