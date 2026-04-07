@@ -71,8 +71,8 @@ const char* slotIds[6] = {"slot-1","slot-2","slot-3","slot-4","slot-5","slot-6"}
 // ============================================================
 const int ENTRANCE_CLOSED = 0;
 const int ENTRANCE_OPEN   = 90;
-const int EXIT_CLOSED     = 0;
-const int EXIT_OPEN       = 90;
+const int EXIT_CLOSED     = 170;
+const int EXIT_OPEN       = 80;
 
 // ============================================================
 // GATE SENSITIVITY SETTINGS
