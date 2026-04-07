@@ -208,7 +208,7 @@ class AppStrings {
   static const String adminPass = 'admin123';
 
   static const int reservationMinutes = 15;
-  static const int barrierAutoCloseSeconds = 30;
+  static const int barrierAutoCloseSeconds = 10;
   static const double occupiedDistanceCm = 20.0;
   static const int totalSlots = 6;
 
