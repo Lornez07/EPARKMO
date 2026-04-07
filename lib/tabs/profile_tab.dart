@@ -99,30 +99,72 @@ class ProfileTab extends StatelessWidget {
 
                 const SizedBox(height: 24),
 
-                // Menu items
+                // Section 1: Account Settings
+                const _SectionHeader(label: 'Account Settings'),
                 _MenuCard(
                   items: [
                     _MenuItem(
-                      icon: Icons.info_outline_rounded,
-                      label: 'About E-Park Mo',
-                      onTap: () => _showAbout(context),
+                      icon: Icons.person_outline_rounded,
+                      label: 'Edit Profile',
+                      onTap: () => _showEditProfile(ctx, provider),
                     ),
                     _MenuItem(
                       icon: Icons.local_parking_rounded,
-                      label: 'Total Slots',
-                      trailing: '${AppStrings.totalSlots}',
-                      onTap: () {},
-                    ),
-                    _MenuItem(
-                      icon: Icons.timer_outlined,
-                      label: 'Reservation Timeout',
-                      trailing: '${AppStrings.reservationMinutes} min',
-                      onTap: () {},
+                      label: 'Parking Information',
+                      onTap: () => _showParkingInfo(ctx, provider),
                     ),
                   ],
                 ).animate(delay: 150.ms).fadeIn(duration: 500.ms),
 
-                const SizedBox(height: 16),
+                const SizedBox(height: 24),
+
+                // Section 2: Support & Operations
+                const _SectionHeader(label: 'Support & Operations'),
+                _MenuCard(
+                  items: [
+                    _MenuItem(
+                      icon: Icons.monitor_heart_outlined,
+                      label: 'System Status',
+                      onTap: () => _showSystemStatus(ctx, provider),
+                    ),
+                    _MenuItem(
+                      icon: Icons.help_outline_rounded,
+                      label: 'Help / FAQ',
+                      onTap: () => _showHelp(ctx),
+                    ),
+                    _MenuItem(
+                      icon: Icons.feedback_outlined,
+                      label: 'Feedback / Report Issue',
+                      onTap: () => _showFeedback(ctx),
+                    ),
+                  ],
+                ).animate(delay: 200.ms).fadeIn(duration: 500.ms),
+
+                const SizedBox(height: 24),
+
+                // Section 3: Legal & Meta
+                const _SectionHeader(label: 'Legal & Info'),
+                _MenuCard(
+                  items: [
+                    _MenuItem(
+                      icon: Icons.gavel_rounded,
+                      label: 'Terms and Conditions',
+                      onTap: () => _showTerms(ctx),
+                    ),
+                    _MenuItem(
+                      icon: Icons.privacy_tip_outlined,
+                      label: 'Privacy Policy',
+                      onTap: () => _showPrivacy(ctx),
+                    ),
+                    _MenuItem(
+                      icon: Icons.info_outline_rounded,
+                      label: 'About App',
+                      onTap: () => _showAbout(ctx),
+                    ),
+                  ],
+                ).animate(delay: 250.ms).fadeIn(duration: 500.ms),
+
+                const SizedBox(height: 32),
 
                 // Sign out
                 ClipRRect(
@@ -152,7 +194,7 @@ class ProfileTab extends StatelessWidget {
                       },
                     ),
                   ),
-                ).animate(delay: 250.ms).fadeIn(duration: 500.ms),
+                ).animate(delay: 300.ms).fadeIn(duration: 500.ms),
 
                 const SizedBox(height: 24),
                 Text('${AppStrings.appName} v1.0.0',
@@ -166,13 +208,83 @@ class ProfileTab extends StatelessWidget {
     );
   }
 
+  void _showEditProfile(BuildContext context, ParkingProvider provider) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (context) => _BaseModalSheet(
+        title: 'Edit Profile',
+        icon: Icons.person_outline_rounded,
+        child: Column(
+          children: [
+            const SizedBox(height: 10),
+            _buildTextField(label: 'Full Name', initialValue: provider.currentUser?.name ?? ''),
+            const SizedBox(height: 20),
+            ElevatedButton(
+              onPressed: () => Navigator.pop(context),
+              style: ElevatedButton.styleFrom(minimumSize: const Size(double.infinity, 50)),
+              child: const Text('Save Changes'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showParkingInfo(BuildContext context, ParkingProvider provider) {
+    _showModal(context, 'Parking Information', Icons.local_parking_rounded, [
+      _buildInfoRow('Total Capacity', '${AppStrings.totalSlots} Slots'),
+      _buildInfoRow('Reservation Time', '${AppStrings.reservationMinutes} Minutes'),
+      _buildInfoRow('Auto-Close Guard', '${AppStrings.barrierAutoCloseSeconds} Seconds'),
+    ]);
+  }
+
+  void _showSystemStatus(BuildContext context, ParkingProvider provider) {
+    _showModal(context, 'System Status', Icons.monitor_heart_outlined, [
+      _buildStatusRow('Cloud Database', 'Connected', true),
+      _buildStatusRow('Hardware Gateway', provider.slots.isNotEmpty ? 'Online' : 'Connecting...', provider.slots.isNotEmpty),
+      _buildStatusRow('OTP Service', 'Active', true),
+      _buildStatusRow('System Version', 'v1.0.0 (Thesis)', true),
+    ]);
+  }
+
+  void _showHelp(BuildContext context) {
+    _showModal(context, 'Help & FAQ', Icons.help_outline_rounded, [
+      _buildFaqItem('How do I reserve?', 'Select an "Available" slot and tap "Reserve". You have 15 minutes to arrive.'),
+      _buildFaqItem('How to open the gate?', 'Once you arrive at your slot and confirm, use the "Open Barrier" button.'),
+      _buildFaqItem('What if my time expires?', 'The reservation will automatically cancel and the slot becomes available again.'),
+    ]);
+  }
+
+  void _showFeedback(BuildContext context) {
+    _showModal(context, 'Feedback', Icons.feedback_outlined, [
+      const Text('We value your feedback for our thesis project.', style: TextStyle(color: Colors.white70)),
+      const SizedBox(height: 16),
+      _buildTextField(label: 'Feedback / Issue Description', maxLines: 4),
+      const SizedBox(height: 16),
+      ElevatedButton(onPressed: () => Navigator.pop(context), child: const Text('Submit Feedback')),
+    ]);
+  }
+
+  void _showTerms(BuildContext context) {
+    _showModal(context, 'Terms & Conditions', Icons.gavel_rounded, [
+      Text('By using E-Park Mo, you agree to follow the campus parking regulations of ${AppStrings.college}...', style: const TextStyle(color: Colors.white70)),
+    ]);
+  }
+
+  void _showPrivacy(BuildContext context) {
+    _showModal(context, 'Privacy Policy', Icons.privacy_tip_outlined, [
+      const Text('We only collect minimal data (Name, Email) to facilitate the parking reservation system...', style: TextStyle(color: Colors.white70)),
+    ]);
+  }
+
   void _showAbout(BuildContext context) {
     showDialog(
       context: context,
       builder: (_) => AlertDialog(
         backgroundColor: AppColors.bgCard,
-        shape:
-            RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
         title: Row(
           children: [
             Container(
@@ -181,34 +293,182 @@ class ProfileTab extends StatelessWidget {
                 color: AppColors.primary.withOpacity(0.15),
                 borderRadius: BorderRadius.circular(10),
               ),
-              child: const Icon(Icons.local_parking_rounded,
-                  color: AppColors.primary),
+              child: const Icon(Icons.info_outline_rounded, color: AppColors.primary),
             ),
             const SizedBox(width: 12),
-            Text('E-Park Mo', style: AppTextStyles.headingMedium),
+            Text('About App', style: AppTextStyles.headingMedium),
           ],
         ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('Smart Parking System Prototype',
-                style: AppTextStyles.bodyLarge),
-            const SizedBox(height: 12),
-            Text('Thesis Project 2026 — ${AppStrings.college}',
-                style: AppTextStyles.bodyMedium),
-            const SizedBox(height: 8),
-            Text('Developers:', style: AppTextStyles.labelLarge),
-            Text('John Cedrick Pasco', style: AppTextStyles.bodyMedium),
-            Text('Lorenz Estrella', style: AppTextStyles.bodyMedium),
-          ],
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _buildAboutRow('App Name', AppStrings.appName),
+              _buildAboutRow('Description', 'Smart Parking System prototype'),
+              const Divider(height: 24),
+              _buildAboutRow('Developers', 'John Cedrick Pasco\nLorenz Estrella'),
+              _buildAboutRow('Institution', AppStrings.college),
+              _buildAboutRow('Stakeholder', 'Micronet Solutions Inc.'),
+              const Divider(height: 24),
+              _buildAboutRow('Technologies', 'Flutter, Firebase, ESP32,\nUltrasonic Sensors'),
+              _buildAboutRow('Version', '1.0'),
+              _buildAboutRow('Year', '2026'),
+            ],
+          ),
         ),
         actions: [
-          ElevatedButton(
+          TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('Close'),
+            child: const Text('Close', style: TextStyle(color: AppColors.primary)),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildAboutRow(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 6.0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(label, style: AppTextStyles.labelLarge.copyWith(color: AppColors.textMuted, fontSize: 12)),
+          const SizedBox(height: 2),
+          Text(value, style: AppTextStyles.bodyMedium.copyWith(color: AppColors.textPrimary)),
+        ],
+      ),
+    );
+  }
+
+  // --- Helpers ---
+  void _showModal(BuildContext context, String title, IconData icon, List<Widget> children) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (context) => _BaseModalSheet(
+        title: title,
+        icon: icon,
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: children),
+      ),
+    );
+  }
+
+  Widget _buildInfoRow(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8.0),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(label, style: const TextStyle(color: Colors.white70)),
+          Text(value, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildStatusRow(String label, String status, bool success) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8.0),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(label, style: const TextStyle(color: Colors.white70)),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+            decoration: BoxDecoration(
+              color: (success ? AppColors.available : AppColors.error).withOpacity(0.1),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Text(status, style: TextStyle(color: success ? AppColors.available : AppColors.error, fontSize: 12, fontWeight: FontWeight.bold)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildFaqItem(String q, String a) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 16.0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(q, style: const TextStyle(color: AppColors.primary, fontWeight: FontWeight.bold)),
+          const SizedBox(height: 4),
+          Text(a, style: const TextStyle(color: Colors.white70, fontSize: 13)),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTextField({required String label, int maxLines = 1, dynamic initialValue}) {
+    return TextField(
+      maxLines: maxLines,
+      style: const TextStyle(color: Colors.white),
+      decoration: InputDecoration(
+        labelText: label,
+        labelStyle: const TextStyle(color: Colors.white60),
+        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: Colors.white.withOpacity(0.1))),
+        focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: AppColors.primary)),
+        filled: true,
+        fillColor: Colors.white.withOpacity(0.05),
+      ),
+    );
+  }
+}
+
+class _SectionHeader extends StatelessWidget {
+  final String label;
+  const _SectionHeader({required this.label});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(left: 4, bottom: 8),
+      child: Align(
+        alignment: Alignment.centerLeft,
+        child: Text(label.toUpperCase(), style: AppTextStyles.labelLarge.copyWith(color: AppColors.textMuted, letterSpacing: 1.2)),
+      ),
+    );
+  }
+}
+
+class _BaseModalSheet extends StatelessWidget {
+  final String title;
+  final IconData icon;
+  final Widget child;
+
+  const _BaseModalSheet({required this.title, required this.icon, required this.child});
+
+  @override
+  Widget build(BuildContext context) {
+    return BackdropFilter(
+      filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+      child: Container(
+        padding: const EdgeInsets.all(24),
+        decoration: BoxDecoration(
+          color: AppColors.bgDark.withOpacity(0.9),
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),
+          border: Border.all(color: Colors.white.withOpacity(0.1)),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(width: 40, height: 4, decoration: BoxDecoration(color: Colors.white24, borderRadius: BorderRadius.circular(2))),
+            const SizedBox(height: 24),
+            Row(
+              children: [
+                Icon(icon, color: AppColors.primary),
+                const SizedBox(width: 12),
+                Text(title, style: AppTextStyles.headingSmall),
+              ],
+            ),
+            const SizedBox(height: 24),
+            child,
+            const SizedBox(height: 24),
+          ],
+        ),
       ),
     );
   }

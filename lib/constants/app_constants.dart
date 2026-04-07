@@ -9,9 +9,9 @@ class AppColors {
   static const Color bgCard = Color(0xFF162032);
 
   // Primary
-  static const Color primary = Color(0xFF0FB9B1);
-  static const Color primaryDark = Color(0xFF0A8F89);
-  static const Color primaryGlow = Color(0x400FB9B1);
+  static const Color primary = Color(0xFF14C1C7);
+  static const Color primaryDark = Color(0xFF109DA2);
+  static const Color primaryGlow = Color(0x4014C1C7);
 
   // Slot Status
   static const Color available = Color(0xFF2ECC71);

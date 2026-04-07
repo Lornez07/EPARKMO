@@ -132,6 +132,15 @@ class ParkingProvider extends ChangeNotifier {
         }
       }
 
+      // ─── Passive Expiration/Metadata Cleanup ───────────────────────────
+      // If we see a slot that is "available" in Firestore but still has 
+      // a userId, it means it wasn't cleaned up properly (e.g., car left).
+      for (final slot in data) {
+        if (slot.status == SlotStatus.available && slot.userId != null) {
+          _service.resetSlot(slot.id);
+        }
+      }
+
       notifyListeners();
     });
 
@@ -160,7 +169,18 @@ class ParkingProvider extends ChangeNotifier {
           status: ReservationStatus.active,
           otp: data['otp'],
         );
-        _startExpiryTimer();
+
+        // ─── Lazy Cleanup ──────────────────────────────────────────────────
+        // If app just fetched this but it's already expired, clean it up NOW.
+        if (_activeReservation!.remaining == Duration.zero) {
+           _service.expireReservation(
+            slotId: _activeReservation!.slotId,
+            slotNumber: _activeReservation!.slotNumber,
+            user: _currentUser!,
+          );
+        } else {
+          _startExpiryTimer();
+        }
       } else {
         _activeReservation = null;
         _expiryTimer?.cancel();

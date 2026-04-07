@@ -212,6 +212,28 @@ class ParkingService {
     await batch.commit();
   }
 
+  /// Explicitly reset a slot back to a completely fresh available state
+  Future<void> resetSlot(String slotId) async {
+    final batch = _db.batch();
+
+    batch.update(_slotsRef.doc(slotId), {
+      'status': SlotStatus.available.name,
+      'userId': null,
+      'reservedByName': null,
+    });
+
+    // Note: Since this is a passive cleanup (e.g. car left), we don't always 
+    // have the userId/Name easily without fetching. We'll log it as a general reset.
+    batch.set(_logsRef.doc(_uuid.v4()), {
+      'action': 'Slot reset to available (passive cleanup)',
+      'slotId': slotId,
+      'timestamp': FieldValue.serverTimestamp(),
+      'type': 'system',
+    });
+
+    await batch.commit();
+  }
+
   // ─── Barrier ──────────────────────────────────────────────────────────────
 
   /// Open the entrance barrier.

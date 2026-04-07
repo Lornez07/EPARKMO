@@ -1,13 +1,12 @@
 // ============================================================
-// E-PARK MO — SMART PARKING SYSTEM (UPDATED v2)
-// Merged: Hardware logic + Firestore communication
+// E-PARK MO — SMART PARKING SYSTEM (UPDATED v3)
 // ============================================================
-// CHANGES FROM v1:
-// 1. FIXED: Entrance barrier now opens without requiring hasReservedSlot()
-// 2. FIXED: Reserved slots transition to occupied when sensor detects car
-// 3. OPTIMIZED: Batch slot reads into single collection GET (was 6 requests)
-// 4. ADDED: HTTP timeout to prevent long blocking
-// 5. ADDED: Separate entrance/exit barrier Firestore fields
+// CHANGES FROM v2:
+// 1. FIXED: Firestore HTTP calls moved to separate FreeRTOS task
+//           (Core 0) — hindi na nahaharang ang gate at sensors
+// 2. FIXED: Gate handlers now run uninterrupted on Core 1
+// 3. CHANGED: Firestore refresh rate → 3 seconds
+// 4. ADDED: Mutex para sa thread-safe na slot status access
 // ============================================================
 // PIN SUMMARY:
 // Entrance IR (dedicated) → GPIO 34
@@ -61,10 +60,15 @@ const int buzzerPin        = 4;
 // SLOT STATUS
 // 0 = available, 1 = occupied, 2 = reserved
 // ============================================================
-int slotStatus[6]     = {0, 0, 0, 0, 0, 0};
+int slotStatus[6]       = {0, 0, 0, 0, 0, 0};
 int lastPushedStatus[6] = {-1, -1, -1, -1, -1, -1};
 
 const char* slotIds[6] = {"slot-1","slot-2","slot-3","slot-4","slot-5","slot-6"};
+
+// ============================================================
+// MUTEX — thread-safe access sa slotStatus
+// ============================================================
+SemaphoreHandle_t slotMutex;
 
 // ============================================================
 // SERVO POSITIONS
@@ -115,37 +119,28 @@ int           slotLastState[6]  = {0, 0, 0, 0, 0, 0};
 // ============================================================
 // LCD STATE
 // ============================================================
-unsigned long lastLCDUpdate     = 0;
-bool          showingGateStatus = false;
-unsigned long gateDisplayAt     = 0;
+unsigned long lastLCDUpdate         = 0;
+bool          showingGateStatus     = false;
+unsigned long gateDisplayAt         = 0;
 const unsigned long GATE_DISPLAY_MS = 3000;
 
 // ============================================================
-// FIRESTORE TIMERS
+// FIRESTORE SETTINGS
+// ✅ 3 seconds refresh rate
 // ============================================================
-unsigned long lastSlotPush    = 0;
-unsigned long lastFirestorePoll = 0;
-const unsigned long SLOT_PUSH_INTERVAL    = 1000;   // push slots every 1s
-const unsigned long FIRESTORE_POLL_INTERVAL = 1500;  // poll every 1.5s
+const unsigned long SLOT_PUSH_INTERVAL     = 3000;
+const unsigned long FIRESTORE_POLL_INTERVAL = 3000;
+const int           HTTP_TIMEOUT_MS         = 3000;
 
-// ============================================================
-// HTTP TIMEOUT — prevents long blocking when network is slow
-// ============================================================
-const int HTTP_TIMEOUT_MS = 3000; // 3 second timeout per request
-
-// ============================================================
-// Firestore base URL
-// ============================================================
 String firestoreBase;
 
 // ============================================================
 // RESERVATION TRIGGER FLAG
-// Set by reading Firestore barrier/gate.isOpen
 // ============================================================
-bool reservationTrigger = false;
+volatile bool reservationTrigger = false;
 
 // ============================================================
-// HELPER — BUZZER
+// HELPER — BUZZER (low level trigger)
 // ============================================================
 void buzzerOn()  { digitalWrite(buzzerPin, LOW);  }
 void buzzerOff() { digitalWrite(buzzerPin, HIGH); }
@@ -197,8 +192,7 @@ void updateLCD() {
   if (showingGateStatus && millis() - gateDisplayAt < GATE_DISPLAY_MS) return;
   showingGateStatus = false;
 
-  int available = 0;
-  int reserved  = 0;
+  int available = 0, reserved = 0;
   for (int i = 0; i < 6; i++) {
     if (slotStatus[i] == 0) available++;
     if (slotStatus[i] == 2) reserved++;
@@ -219,32 +213,27 @@ void updateLCD() {
 
 // ============================================================
 // SLOT UPDATE — WITH DEBOUNCE
-// FIX v2: Reserved slots now transition to occupied when
-//         sensor detects a car (arrival at reserved slot)
 // ============================================================
 void updateSlots() {
+  if (xSemaphoreTake(slotMutex, 10) != pdTRUE) return;
+
   for (int i = 0; i < 6; i++) {
     int reading = (digitalRead(irPins[i]) == LOW) ? 1 : 0;
 
-    // ── FIX v2: Handle reserved slots ──
-    // If slot is reserved AND sensor detects a car → transition to occupied
-    // This means the user who reserved has parked in their slot
+    // Reserved slot — transition to occupied if car detected
     if (slotStatus[i] == 2) {
       if (reading == 1) {
-        // Car detected at reserved slot → mark as occupied
         slotStatus[i]    = 1;
         slotLastState[i] = 1;
-        Serial.println(String(slotIds[i]) + " reserved → occupied (car arrived)");
+        Serial.println(String(slotIds[i]) + " reserved → occupied");
       }
-      // If no car detected at reserved slot, keep it reserved (user hasn't arrived yet)
       continue;
     }
 
-    // Normal debounce logic for available/occupied slots
+    // Normal debounce
     if (reading != slotLastState[i]) {
       if (slotDetectedAt[i] == 0) slotDetectedAt[i] = millis();
       slotConfirm[i]++;
-
       if (slotConfirm[i] >= SLOT_CONFIRM_NEEDED &&
           millis() - slotDetectedAt[i] >= SLOT_DEBOUNCE) {
         slotStatus[i]     = reading;
@@ -257,22 +246,30 @@ void updateSlots() {
       slotDetectedAt[i] = 0;
     }
   }
+
+  xSemaphoreGive(slotMutex);
 }
 
 // ============================================================
 // FIRESTORE — PUSH SLOT STATUS
-// Only pushes when status changed
 // ============================================================
 void pushSlotsToFirestore() {
   if (WiFi.status() != WL_CONNECTED) return;
 
+  // Take snapshot of slot status (thread-safe)
+  int snapshot[6];
+  if (xSemaphoreTake(slotMutex, 100) == pdTRUE) {
+    for (int i = 0; i < 6; i++) snapshot[i] = slotStatus[i];
+    xSemaphoreGive(slotMutex);
+  } else return;
+
   for (int i = 0; i < 6; i++) {
-    if (slotStatus[i] == lastPushedStatus[i]) continue;
+    if (snapshot[i] == lastPushedStatus[i]) continue;
 
     String statusStr;
-    if      (slotStatus[i] == 1) statusStr = "occupied";
-    else if (slotStatus[i] == 2) statusStr = "reserved";
-    else                         statusStr = "available";
+    if      (snapshot[i] == 1) statusStr = "occupied";
+    else if (snapshot[i] == 2) statusStr = "reserved";
+    else                       statusStr = "available";
 
     String url = firestoreBase + "/slots/" + slotIds[i] +
                  "?updateMask.fieldPaths=status" +
@@ -280,18 +277,18 @@ void pushSlotsToFirestore() {
                  "&key=" + String(API_KEY);
 
     String body = "{\"fields\":{"
-                  "\"status\":{\"stringValue\":\"" + statusStr + "\"},"
+                  "\"status\":{\"stringValue\"😕"" + statusStr + "\"},"
                   "\"isSensorActive\":{\"booleanValue\":true}"
                   "}}";
 
     HTTPClient http;
     http.begin(url);
-    http.setTimeout(HTTP_TIMEOUT_MS);  // FIX v2: Add timeout
+    http.setTimeout(HTTP_TIMEOUT_MS);
     http.addHeader("Content-Type", "application/json");
     int code = http.PATCH(body);
 
     if (code == 200) {
-      lastPushedStatus[i] = slotStatus[i];
+      lastPushedStatus[i] = snapshot[i];
       Serial.println(String(slotIds[i]) + " → " + statusStr + " ✓");
     } else {
       Serial.println(String(slotIds[i]) + " push failed. HTTP: " + String(code));
@@ -302,60 +299,53 @@ void pushSlotsToFirestore() {
 
 // ============================================================
 // FIRESTORE — POLL RESERVATIONS + BARRIER
-// FIX v2: Batch slot reads into single collection GET
-//         (was 6 individual requests → now 1 request)
 // ============================================================
 void pollFirestore() {
   if (WiFi.status() != WL_CONNECTED) return;
 
-  // ── 1. Batch-read ALL slots in one request ─────────────────
+  // ── 1. Batch-read ALL slots ─────────────────────────────
   String slotsUrl = firestoreBase + "/slots?key=" + String(API_KEY);
-
   HTTPClient http;
   http.begin(slotsUrl);
-  http.setTimeout(HTTP_TIMEOUT_MS);  // FIX v2: Add timeout
+  http.setTimeout(HTTP_TIMEOUT_MS);
   int code = http.GET();
 
   if (code == 200) {
     String payload = http.getString();
 
-    // Parse each slot from the collection response
+    int localSnapshot[6];
+    if (xSemaphoreTake(slotMutex, 100) == pdTRUE) {
+      for (int i = 0; i < 6; i++) localSnapshot[i] = slotStatus[i];
+      xSemaphoreGive(slotMutex);
+    }
+
     for (int i = 0; i < 6; i++) {
-      // Find slot document in response by looking for the slot ID
       String slotMarker = String("/slots/") + slotIds[i];
       int docPos = payload.indexOf(slotMarker);
       if (docPos < 0) continue;
 
-      // Extract the section for this slot (find next document boundary or end)
       String nextMarker = (i < 5) ? String("/slots/") + slotIds[i + 1] : "NOT_FOUND";
       int nextPos = payload.indexOf(nextMarker, docPos + 1);
-      String slotSection;
-      if (nextPos > 0) {
-        slotSection = payload.substring(docPos, nextPos);
-      } else {
-        slotSection = payload.substring(docPos);
-      }
+      String slotSection = (nextPos > 0)
+        ? payload.substring(docPos, nextPos)
+        : payload.substring(docPos);
 
-      // Check status in this slot's section
       bool isReserved  = slotSection.indexOf("\"reserved\"")  > 0;
       bool isAvailable = slotSection.indexOf("\"available\"") > 0;
       bool isOccupied  = slotSection.indexOf("\"occupied\"")  > 0;
 
-      // Only sync if ESP32's local state disagrees with Firestore
-      if (isReserved && slotStatus[i] != 2) {
-        slotStatus[i]    = 2;
-        slotLastState[i] = 2;
-        Serial.println(String(slotIds[i]) + " synced → reserved");
-      } else if (isAvailable && slotStatus[i] == 2) {
-        // App cancelled reservation — free the slot
-        slotStatus[i]    = 0;
-        slotLastState[i] = 0;
-        Serial.println(String(slotIds[i]) + " synced → available (cancelled)");
-      } else if (isOccupied && slotStatus[i] == 2) {
-        // App marked arrival — slot is now occupied
-        slotStatus[i]    = 1;
-        slotLastState[i] = 1;
-        Serial.println(String(slotIds[i]) + " synced → occupied (arrived)");
+      if (xSemaphoreTake(slotMutex, 100) == pdTRUE) {
+        if (isReserved && slotStatus[i] != 2) {
+          slotStatus[i] = 2; slotLastState[i] = 2;
+          Serial.println(String(slotIds[i]) + " synced → reserved");
+        } else if (isAvailable && slotStatus[i] == 2) {
+          slotStatus[i] = 0; slotLastState[i] = 0;
+          Serial.println(String(slotIds[i]) + " synced → available");
+        } else if (isOccupied && slotStatus[i] == 2) {
+          slotStatus[i] = 1; slotLastState[i] = 1;
+          Serial.println(String(slotIds[i]) + " synced → occupied");
+        }
+        xSemaphoreGive(slotMutex);
       }
     }
   } else {
@@ -363,12 +353,11 @@ void pollFirestore() {
   }
   http.end();
 
-  // ── 2. Poll barrier/gate for app-triggered entrance open ───
+  // ── 2. Poll barrier/gate ────────────────────────────────
   String barrierUrl = firestoreBase + "/barrier/gate?key=" + String(API_KEY);
-
   HTTPClient http2;
   http2.begin(barrierUrl);
-  http2.setTimeout(HTTP_TIMEOUT_MS);  // FIX v2: Add timeout
+  http2.setTimeout(HTTP_TIMEOUT_MS);
   code = http2.GET();
 
   if (code == 200) {
@@ -379,7 +368,7 @@ void pollFirestore() {
       reservationTrigger = true;
       Serial.println(">> App triggered barrier open.");
 
-      // Reset isOpen in Firestore so it doesn't re-trigger
+      // Reset isOpen in Firestore
       String resetUrl = firestoreBase + "/barrier/gate" +
                         "?updateMask.fieldPaths=isOpen" +
                         "&key=" + String(API_KEY);
@@ -397,10 +386,34 @@ void pollFirestore() {
 }
 
 // ============================================================
+// FIRESTORE TASK — runs on Core 0
+// ✅ Hindi na nahaharang ang gate at sensors
+// ============================================================
+void firestoreTask(void* parameter) {
+  unsigned long lastPush = 0;
+  unsigned long lastPoll = 0;
+
+  for (;;) {
+    unsigned long now = millis();
+
+    // Push every 3 seconds
+    if (now - lastPush >= SLOT_PUSH_INTERVAL) {
+      lastPush = now;
+      pushSlotsToFirestore();
+    }
+
+    // Poll every 3 seconds (offset by 1.5s from push)
+    if (now - lastPoll >= FIRESTORE_POLL_INTERVAL) {
+      lastPoll = now;
+      pollFirestore();
+    }
+
+    vTaskDelay(100 / portTICK_PERIOD_MS); // yield every 100ms
+  }
+}
+
+// ============================================================
 // GATE HANDLER
-// FIX v2: Entrance trigger no longer requires hasReservedSlot()
-//         The app only writes isOpen:true after OTP verification,
-//         so the trigger is already validated.
 // ============================================================
 void handleGate(int irPin, Servo &servo,
                 bool &isOpen, int &confirmCount,
@@ -433,9 +446,6 @@ void handleGate(int irPin, Servo &servo,
   }
 
   if (isEntrance) {
-    // ── FIX v2: App-triggered open ──
-    // No longer checks hasReservedSlot() — the app OTP verification
-    // already confirms the user is legitimate before setting isOpen:true
     if (reservationTrigger) {
       Serial.println(">> App trigger — Opening entrance!");
       showGateStatus(true, true);
@@ -449,14 +459,12 @@ void handleGate(int irPin, Servo &servo,
       return;
     }
 
-    // Walk-in — only open if parking is not full
     if (isParkingFull()) {
       Serial.println(">> Parking full — Entrance blocked.");
       return;
     }
   }
 
-  // IR detection with confirmation
   int irState = digitalRead(irPin);
   if (irState == LOW) {
     if (detectedAt == 0) detectedAt = millis();
@@ -492,13 +500,14 @@ void setup() {
   Serial.begin(115200);
   delay(1000);
 
+  // ✅ Create mutex para sa thread-safe slot access
+  slotMutex = xSemaphoreCreateMutex();
+
   Wire.begin(25, 26);
   lcd.init();
   lcd.backlight();
-  lcd.setCursor(0, 0);
-  lcd.print("Welcome To      ");
-  lcd.setCursor(0, 1);
-  lcd.print("  E-Park Mo!    ");
+  lcd.setCursor(0, 0); lcd.print("Welcome To      ");
+  lcd.setCursor(0, 1); lcd.print("  E-Park Mo!    ");
   delay(5000);
   lcd.clear();
 
@@ -541,12 +550,25 @@ void setup() {
                     String(PROJECT_ID) +
                     "/databases/(default)/documents";
 
-    Serial.println("Firestore: " + firestoreBase);
+    // ✅ Start Firestore task on Core 0
+    // Main loop runs on Core 1 — gate + sensors hindi nahaharang
+    xTaskCreatePinnedToCore(
+      firestoreTask,    // function
+      "FirestoreTask",  // name
+      16384,            // stack size (16KB — enough for HTTP)
+      NULL,             // parameter
+      1,                // priority
+      NULL,             // handle
+      0                 // ✅ Core 0
+    );
+
+    Serial.println("Firestore task started on Core 0.");
   }
 }
 
 // ============================================================
-// LOOP
+// LOOP — runs on Core 1
+// ✅ Gate handlers + IR sensors + LCD — walang interruption
 // ============================================================
 void loop() {
   unsigned long now = millis();
@@ -554,25 +576,13 @@ void loop() {
   // 1. Read IR sensors with debounce
   updateSlots();
 
-  // 2. Push changed slot statuses to Firestore every 1s
-  if (now - lastSlotPush >= SLOT_PUSH_INTERVAL) {
-    lastSlotPush = now;
-    pushSlotsToFirestore();
-  }
-
-  // 3. Poll Firestore for reservations + barrier every 1.5s
-  if (now - lastFirestorePoll >= FIRESTORE_POLL_INTERVAL) {
-    lastFirestorePoll = now;
-    pollFirestore();
-  }
-
-  // 4. Update LCD every 500ms
+  // 2. Update LCD every 500ms
   if (now - lastLCDUpdate > 500) {
     lastLCDUpdate = now;
     updateLCD();
   }
 
-  // 5. Debug print every 1s
+  // 3. Debug print every 1s
   static unsigned long lastPrint = 0;
   if (now - lastPrint > 1000) {
     lastPrint = now;
@@ -589,7 +599,7 @@ void loop() {
     Serial.println(isParkingFull() ? "YES" : "NO");
   }
 
-  // 6. Gate handlers
+  // 4. Gate handlers — walang interruption mula sa HTTP
   handleGate(irEntrancePin, servoEntrance,
              entranceOpen, entranceConfirm,
              entranceOpenedAt, entranceDetectedAt,

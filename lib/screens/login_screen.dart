@@ -80,22 +80,27 @@ class _LoginScreenState extends State<LoginScreen> {
                     Row(
                       children: [
                         Container(
-                          padding: const EdgeInsets.all(10),
+                          width: 52,
+                          height: 52,
+                          padding: const EdgeInsets.all(4),
                           decoration: BoxDecoration(
-                            gradient: LinearGradient(
-                              colors: [
-                                AppColors.primary,
-                                AppColors.primaryDark
-                              ],
-                            ),
-                            borderRadius: BorderRadius.circular(14),
+                            color: AppColors.primary,
+                            borderRadius: BorderRadius.circular(16),
                             boxShadow: [
                               BoxShadow(
-                                  color: AppColors.primaryGlow, blurRadius: 12)
+                                color: AppColors.primary.withOpacity(0.2),
+                                blurRadius: 20,
+                                spreadRadius: 2,
+                              )
                             ],
                           ),
-                          child: const Icon(Icons.local_parking_rounded,
-                              color: Colors.white, size: 26),
+                          child: ClipRRect(
+                            borderRadius: BorderRadius.circular(12),
+                            child: Image.asset(
+                              'assets/images/app_logo.png',
+                              fit: BoxFit.cover,
+                            ),
+                          ),
                         ),
                         const SizedBox(width: 14),
                         Column(

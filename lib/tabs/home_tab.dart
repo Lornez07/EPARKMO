@@ -43,13 +43,27 @@ class HomeTab extends StatelessWidget {
                             ),
                           ),
                           Container(
-                            padding: const EdgeInsets.all(10),
-                            decoration: AppDecorations.glassCard(
-                                borderRadius: 14),
-                            child: const Icon(
-                                Icons.local_parking_rounded,
-                                color: AppColors.primary,
-                                size: 22),
+                            width: 50,
+                            height: 50,
+                            padding: const EdgeInsets.all(2), // Subtle padding for a professional frame
+                            decoration: BoxDecoration(
+                              borderRadius: BorderRadius.circular(14),
+                              color: AppColors.primary, // Solid brand color for perfect blending
+                              boxShadow: [
+                                BoxShadow(
+                                  color: AppColors.primary.withOpacity(0.2),
+                                  blurRadius: 15,
+                                  spreadRadius: 1,
+                                )
+                              ],
+                            ),
+                            child: ClipRRect(
+                              borderRadius: BorderRadius.circular(12),
+                              child: Image.asset(
+                                'assets/images/app_logo.png',
+                                fit: BoxFit.cover, // Fill the container seamlessly
+                              ),
+                            ),
                           ),
                         ],
                       ).animate().fadeIn(duration: 500.ms),
