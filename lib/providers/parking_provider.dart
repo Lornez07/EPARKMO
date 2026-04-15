@@ -21,6 +21,7 @@ class ParkingProvider extends ChangeNotifier {
   List<ParkingLog> _logs = [];
   Reservation? _activeReservation;
   bool _barrierOpen = false;
+  bool _exitBarrierOpen = false;
   bool _isLoading = false;
   String? _error;
   String? _pendingOtp; // OTP waiting to be verified
@@ -28,6 +29,8 @@ class ParkingProvider extends ChangeNotifier {
   StreamSubscription? _slotsSub;
   StreamSubscription? _logsSub;
   StreamSubscription? _resSub;
+  StreamSubscription? _barrierSub;
+  StreamSubscription? _exitBarrierSub;
   Timer? _barrierTimer;
   Timer? _expiryTimer;
 
@@ -37,6 +40,7 @@ class ParkingProvider extends ChangeNotifier {
   List<ParkingLog> get logs => _logs;
   Reservation? get activeReservation => _activeReservation;
   bool get barrierOpen => _barrierOpen;
+  bool get exitBarrierOpen => _exitBarrierOpen;
   bool get isLoading => _isLoading;
   String? get error => _error;
   String? get pendingOtp => _pendingOtp;
@@ -160,6 +164,7 @@ class ParkingProvider extends ChangeNotifier {
       debugPrint('🔔 RES LISTENER — exists: ${doc.exists}, data: ${doc.data()}');
       if (doc.exists && doc.data() != null) {
         final data = doc.data()!;
+<<<<<<< HEAD
         try {
           final parsed = _parseReservation(doc.id, data);
           if (parsed != null) {
@@ -176,10 +181,28 @@ class ParkingProvider extends ChangeNotifier {
         // ─── Lazy Cleanup ──────────────────────────────────────────────────
         if (_activeReservation != null && _activeReservation!.remaining == Duration.zero) {
           debugPrint('⏰ Expired immediately — cleaning up');
+=======
+        _activeReservation = Reservation(
+          id: doc.id,
+          slotId: data['slotId'],
+          slotNumber: data['slotNumber'],
+          userId: data['userId'],
+          userName: data['userName'],
+          startTime: (data['startTime'] as Timestamp?)?.toDate() ?? DateTime.now(),
+          expiresAt: DateTime.parse(data['expiresAt']),
+          status: ReservationStatus.active,
+          otp: data['otp'],
+        );
+
+        // ─── Lazy Cleanup ──────────────────────────────────────────────────
+        // If app just fetched this but it's already expired, clean it up NOW.
+        if (_activeReservation!.remaining == Duration.zero) {
+>>>>>>> 9ede775032aa32cf38300adae5899ef150f0ecce
            _service.expireReservation(
             slotId: _activeReservation!.slotId,
             slotNumber: _activeReservation!.slotNumber,
             user: _currentUser!,
+<<<<<<< HEAD
           ).catchError((e) {
             reservationParseError = 'Cleanup Error: $e';
             notifyListeners();
@@ -187,6 +210,10 @@ class ParkingProvider extends ChangeNotifier {
           _activeReservation = null;
         } else if (_activeReservation != null) {
           debugPrint('✅ ACTIVE — card should show now');
+=======
+          );
+        } else {
+>>>>>>> 9ede775032aa32cf38300adae5899ef150f0ecce
           _startExpiryTimer();
         }
       } else {
@@ -201,6 +228,17 @@ class ParkingProvider extends ChangeNotifier {
       debugPrint('🔥 RES STREAM ERROR: $e');
       reservationParseError = 'Stream error: $e';
       notifyListeners();
+    });
+
+    // Barrier Status — syncs with ESP32 reset
+    _barrierSub = _service.getBarrierStream().listen((isOpen) {
+      _barrierOpen = isOpen;
+      notifyListeners();
+    });
+
+    _exitBarrierSub = _service.getExitBarrierStream().listen((isOpen) {
+       _exitBarrierOpen = isOpen;
+       notifyListeners();
     });
   }
 
@@ -254,6 +292,8 @@ class ParkingProvider extends ChangeNotifier {
     await _slotsSub?.cancel();
     await _logsSub?.cancel();
     await _resSub?.cancel();
+    await _barrierSub?.cancel();
+    await _exitBarrierSub?.cancel();
     _barrierTimer?.cancel();
     _expiryTimer?.cancel();
   }
@@ -349,7 +389,11 @@ class ParkingProvider extends ChangeNotifier {
   }
 
   Future<void> confirmArrival() async {
-    if (_activeReservation == null || _currentUser == null) return;
+    print('🚪 confirmArrival() called');
+    if (_activeReservation == null || _currentUser == null) {
+      print('❌ Missing active reservation or user');
+      return;
+    }
     _setLoading(true);
     try {
       await _service.confirmArrival(

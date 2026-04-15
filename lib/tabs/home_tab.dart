@@ -102,8 +102,22 @@ class HomeTab extends StatelessWidget {
                       ).animate(delay: 100.ms).fadeIn(duration: 500.ms),
                       const SizedBox(height: 24),
 
+<<<<<<< HEAD
 
 
+=======
+                      // Gate status card (only for those with permission)
+                      if (provider.canShowBarrier) ...[
+                        _buildGateCard(provider, isEntrance: true)
+                            .animate(delay: 200.ms)
+                            .fadeIn(duration: 500.ms),
+                        const SizedBox(height: 12),
+                        _buildGateCard(provider, isEntrance: false)
+                            .animate(delay: 300.ms)
+                            .fadeIn(duration: 500.ms),
+                        const SizedBox(height: 24),
+                      ],
+>>>>>>> 9ede775032aa32cf38300adae5899ef150f0ecce
 
                       Text('Parking Slots',
                           style: AppTextStyles.headingMedium)
@@ -143,4 +157,86 @@ class HomeTab extends StatelessWidget {
       },
     );
   }
+<<<<<<< HEAD
+=======
+
+  Widget _buildGateCard(ParkingProvider provider, {required bool isEntrance}) {
+    final bool isOpen = isEntrance ? provider.barrierOpen : provider.exitBarrierOpen;
+    final String label = isEntrance ? 'Entrance Barrier' : 'Exit Barrier';
+
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(20),
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+        child: Container(
+          padding: const EdgeInsets.all(18),
+          decoration: isOpen
+              ? AppDecorations.primaryGlassCard(borderRadius: 20)
+              : AppDecorations.glassCard(borderRadius: 20),
+          child: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: (isOpen
+                          ? AppColors.available
+                          : AppColors.textMuted)
+                      .withOpacity(0.15),
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: Icon(
+                  isEntrance ? Icons.sensor_door_rounded : Icons.door_back_door_rounded,
+                  color: isOpen
+                      ? AppColors.available
+                      : AppColors.textMuted,
+                  size: 26,
+                ),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(label,
+                        style: AppTextStyles.headingSmall),
+                    Text(
+                      isOpen ? 'OPENING' : 'CLOSED',
+                      style: AppTextStyles.bodyMedium.copyWith(
+                        color: isOpen
+                            ? AppColors.available
+                            : AppColors.textMuted,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    if (isOpen && isEntrance)
+                      Text('Auto-closes when clear',
+                          style: AppTextStyles.bodySmall),
+                  ],
+                ),
+              ),
+              if (provider.currentUser?.isAdmin ?? false)
+                ElevatedButton(
+                  onPressed: isOpen
+                      ? null
+                      : () => provider.openBarrier(), // Admin override
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.primary,
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 16, vertical: 10),
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12)),
+                  ),
+                  child: Text(
+                    'Open',
+                    style: AppTextStyles.bodyMedium
+                        .copyWith(color: Colors.white),
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+>>>>>>> 9ede775032aa32cf38300adae5899ef150f0ecce
 }

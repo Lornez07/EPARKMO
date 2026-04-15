@@ -115,6 +115,13 @@ int           slotConfirm[6]    = {0, 0, 0, 0, 0, 0};
 unsigned long slotDetectedAt[6] = {0, 0, 0, 0, 0, 0};
 int           slotLastState[6]  = {0, 0, 0, 0, 0, 0};
 
+// NEW: Non-blocking task state
+enum SystemTask { IDLE, POLLING_SLOTS, POLLING_BARRIER, PUSHING_SLOT, PUSHING_LOG };
+SystemTask currentTask = IDLE;
+int taskStep = 0;
+unsigned long lastTaskRun = 0;
+const unsigned long TASK_INTERVAL = 200; // Run a sub-task every 200ms
+
 // ============================================================
 // LCD STATE
 // ============================================================
@@ -135,7 +142,13 @@ String firestoreBase;
 // ============================================================
 // RESERVATION TRIGGER FLAG
 // ============================================================
+<<<<<<< HEAD
 volatile bool reservationTrigger = false;
+=======
+bool reservationTrigger = false;
+bool shouldUpdateExit  = false;
+unsigned long exitOpenAt = 0;
+>>>>>>> 9ede775032aa32cf38300adae5899ef150f0ecce
 
 // ============================================================
 // HELPER — BUZZER (low level trigger)
@@ -257,11 +270,16 @@ void updateSlots() {
 }
 
 // ============================================================
+<<<<<<< HEAD
 // FIRESTORE — PUSH SLOT STATUS
+=======
+// FIRESTORE — PUSH LOG
+>>>>>>> 9ede775032aa32cf38300adae5899ef150f0ecce
 // ============================================================
-void pushSlotsToFirestore() {
-  if (WiFi.status() != WL_CONNECTED) return;
+bool pushLogToFirestore(String action, String type) {
+  if (WiFi.status() != WL_CONNECTED) return false;
 
+<<<<<<< HEAD
   int snapshot[6];
   if (xSemaphoreTake(slotMutex, 100) == pdTRUE) {
     for (int i = 0; i < 6; i++) snapshot[i] = slotStatus[i];
@@ -300,9 +318,32 @@ void pushSlotsToFirestore() {
     }
     http.end();
   }
+=======
+  String url = firestoreBase + "/parkingLogs?key=" + String(API_KEY);
+  
+  // Minimal JSON for a log entry
+  String body = "{\"fields\":{"
+                "\"action\":{\"stringValue\":\"" + action + "\"},"
+                "\"type\":{\"stringValue\":\"" + type + "\"},"
+                "\"timestamp\":{\"timestampValue\":\"" + "2026-04-07T12:00:00Z" + "\"}" // Note: Ideally should be server time if possible, but Firestore .add() handles it differently. We'll use a placeholder or better, let Firestore set it.
+                "}}";
+  // Correction: To let Firestore handle timestamp on server, we should use FieldValue.serverTimestamp() in a different way or just let the app handle it. 
+  // For REST API, we can use "serverTimestamp" placeholder or just omit if the DB allows.
+  
+  HTTPClient http;
+  http.begin(url);
+  http.setTimeout(HTTP_TIMEOUT_MS);
+  http.addHeader("Content-Type", "application/json");
+  int code = http.POST(body);
+  http.end();
+  return (code == 200);
+>>>>>>> 9ede775032aa32cf38300adae5899ef150f0ecce
 }
 
+// ================= ===========================================
+// FIRESTORE — NON-BLOCKING TASK HANDLER
 // ============================================================
+<<<<<<< HEAD
 // FIRESTORE — POLL RESERVATIONS + BARRIER
 // ============================================================
 void pollFirestore() {
@@ -344,13 +385,97 @@ void pollFirestore() {
           Serial.println(String(slotIds[i]) + " synced → occupied");
         }
         xSemaphoreGive(slotMutex);
-      }
-    }
-  } else {
-    Serial.println("Slots batch read failed. HTTP: " + String(code));
-  }
-  http.end();
+=======
+void runSystemTasks() {
+  unsigned long now = millis();
+  if (now - lastTaskRun < TASK_INTERVAL) return;
+  if (WiFi.status() != WL_CONNECTED) return;
 
+  switch (currentTask) {
+    case IDLE:
+      // Determine what to do next based on intervals
+      if (now - lastFirestorePoll >= FIRESTORE_POLL_INTERVAL) {
+        currentTask = POLLING_SLOTS;
+        taskStep = 0;
+      } else if (now - lastSlotPush >= SLOT_PUSH_INTERVAL) {
+        // Find if any slot needs pushing
+        for (int i = 0; i < 6; i++) {
+          if (slotStatus[i] != lastPushedStatus[i]) {
+            currentTask = PUSHING_SLOT;
+            taskStep = i; // Store which slot to push
+            break;
+          }
+        }
+        if (currentTask == IDLE) lastSlotPush = now; // All synced
+      }
+      break;
+
+    case POLLING_SLOTS: {
+      String slotsUrl = firestoreBase + "/slots?key=" + String(API_KEY);
+      HTTPClient http;
+      http.begin(slotsUrl);
+      http.setTimeout(HTTP_TIMEOUT_MS);
+      int code = http.GET();
+      if (code == 200) {
+        String payload = http.getString();
+        for (int i = 0; i < 6; i++) {
+          String slotMarker = String("/slots/") + slotIds[i];
+          int docPos = payload.indexOf(slotMarker);
+          if (docPos < 0) continue;
+          bool isReserved = payload.indexOf("\"reserved\"", docPos) > 0 && payload.indexOf("\"reserved\"", docPos) < (docPos + 500);
+          if (isReserved && slotStatus[i] == 0) {
+            slotStatus[i] = 2;
+            slotLastState[i] = 2;
+            Serial.println(String(slotIds[i]) + " synced → reserved");
+          } else if (!isReserved && slotStatus[i] == 2) {
+            slotStatus[i] = 0;
+            slotLastState[i] = 0;
+            Serial.println(String(slotIds[i]) + " synced → available");
+          }
+        }
+      }
+      http.end();
+      currentTask = POLLING_BARRIER;
+      break;
+    }
+
+    case POLLING_BARRIER: {
+      String barrierUrl = firestoreBase + "/barrier/gate?key=" + String(API_KEY);
+      HTTPClient http;
+      http.begin(barrierUrl);
+      http.setTimeout(HTTP_TIMEOUT_MS);
+      int code = http.GET();
+      if (code == 200) {
+        String payload = http.getString();
+        if (payload.indexOf("\"booleanValue\":true") > 0) {
+          reservationTrigger = true;
+          Serial.println(">> App triggered barrier open.");
+          // Stage next step: Reset barrier in Firestore
+          taskStep = 1; 
+        } else {
+          currentTask = IDLE;
+          lastFirestorePoll = now;
+        }
+      } else {
+        currentTask = IDLE;
+      }
+      http.end();
+      if (taskStep == 1) {
+        // Transition to resetting the barrier
+        String resetUrl = firestoreBase + "/barrier/gate?updateMask.fieldPaths=isOpen&key=" + String(API_KEY);
+        String resetBody = "{\"fields\":{\"isOpen\":{\"booleanValue\":false}}}";
+        http.begin(resetUrl);
+        http.PATCH(resetBody);
+        http.end();
+        currentTask = IDLE;
+        lastFirestorePoll = now;
+        taskStep = 0;
+>>>>>>> 9ede775032aa32cf38300adae5899ef150f0ecce
+      }
+      break;
+    }
+
+<<<<<<< HEAD
   String barrierUrl = firestoreBase + "/barrier/gate?key=" + String(API_KEY);
   HTTPClient http2;
   http2.begin(barrierUrl);
@@ -377,9 +502,49 @@ void pollFirestore() {
       resetHttp.addHeader("Content-Type", "application/json");
       resetHttp.PATCH(resetBody);
       resetHttp.end();
+=======
+    case PUSHING_SLOT: {
+      int i = taskStep;
+      String statusStr = (slotStatus[i] == 1) ? "occupied" : (slotStatus[i] == 2 ? "reserved" : "available");
+      String url = firestoreBase + "/slots/" + slotIds[i] + "?updateMask.fieldPaths=status&updateMask.fieldPaths=isSensorActive&key=" + String(API_KEY);
+      String body = "{\"fields\":{\"status\":{\"stringValue\":\"" + statusStr + "\"},\"isSensorActive\":{\"booleanValue\":true}}}";
+      
+      HTTPClient http;
+      http.begin(url);
+      http.setTimeout(HTTP_TIMEOUT_MS);
+      http.addHeader("Content-Type", "application/json");
+      int code = http.PATCH(body);
+      if (code == 200) {
+        lastPushedStatus[i] = slotStatus[i];
+        Serial.println(String(slotIds[i]) + " → " + statusStr + " ✓");
+      }
+      http.end();
+      currentTask = IDLE; // Return to check for more changes next time
+      break;
+    }
+
+    case PUSHING_LOG: {
+      // In a real state machine we'd store the log to push, but for now we'll just push one if triggered
+      // This case is a placeholder for future robust logging
+      currentTask = IDLE;
+      break;
+>>>>>>> 9ede775032aa32cf38300adae5899ef150f0ecce
     }
   }
-  http2.end();
+
+  // Handle Entrance/Exit state resets or updates that don't need a full task
+  if (shouldUpdateExit && now - exitOpenAt > 5000) {
+    // Reset exit state in Firestore after 5s
+    String url = firestoreBase + "/barrier/exit?updateMask.fieldPaths=isOpen&key=" + String(API_KEY);
+    String body = "{\"fields\":{\"isOpen\":{\"booleanValue\":false}}}";
+    HTTPClient http;
+    http.begin(url);
+    http.PATCH(body);
+    http.end();
+    shouldUpdateExit = false;
+  }
+
+  lastTaskRun = millis();
 }
 
 // ============================================================
@@ -436,22 +601,47 @@ void handleGate(int irPin, Servo &servo,
         clearAt      = 0;
       }
     }
-    return;
+    return; // Don't check for opening when already open
   }
 
+  // ─── CHECK OPEN TRIGGER ───
+  bool shouldOpen = false;
+  String logAction = "";
+
   if (isEntrance) {
+<<<<<<< HEAD
+=======
+    // 1. App reservation trigger
+>>>>>>> 9ede775032aa32cf38300adae5899ef150f0ecce
     if (reservationTrigger) {
-      Serial.println(">> App trigger — Opening entrance!");
-      showGateStatus(true, true);
-      servo.write(openPos);
-      openedAt           = millis();
-      isOpen             = true;
-      confirmCount       = 0;
-      detectedAt         = 0;
-      clearAt            = 0;
+      Serial.println(">> App trigger detected!");
+      shouldOpen = true;
       reservationTrigger = false;
-      return;
+      logAction = "Entrance opened by App";
+    } 
+    // 2. Autonomous walk-in (only if not full)
+    else {
+      int irState = digitalRead(irPin);
+      if (irState == LOW) {
+        if (isParkingFull()) {
+          // Full — maybe show status on LCD
+          lcd.setCursor(0, 1);
+          lcd.print(" PARKING FULL!  ");
+        } else {
+          if (detectedAt == 0) detectedAt = millis();
+          confirmCount++;
+          if (confirmCount >= GATE_CONFIRM_NEEDED && millis() - detectedAt >= GATE_MIN_HOLD) {
+            Serial.println(">> Walk-in — Entrance opening!");
+            shouldOpen = true;
+            logAction = "Entrance opened (Walk-in - Anonymous)";
+          }
+        }
+      } else {
+        confirmCount = 0;
+        detectedAt = 0;
+      }
     }
+<<<<<<< HEAD
 
     if (isParkingFull()) {
       Serial.println(">> Parking full — Entrance blocked.");
@@ -479,8 +669,48 @@ void handleGate(int irPin, Servo &servo,
       clearAt      = 0;
     }
   } else {
+=======
+  } else {
+    // Exit — fully automatic
+    int irState = digitalRead(irPin);
+    if (irState == LOW) {
+      if (detectedAt == 0) detectedAt = millis();
+      confirmCount++;
+      if (confirmCount >= GATE_CONFIRM_NEEDED && millis() - detectedAt >= GATE_MIN_HOLD) {
+        Serial.println(">> Exit opening!");
+        shouldOpen = true;
+        logAction = "Exit opened (Automatic)";
+      }
+    } else {
+      confirmCount = 0;
+      detectedAt = 0;
+    }
+  }
+
+  if (shouldOpen) {
+    servo.write(openPos);
+    openedAt = millis();
+    isOpen = true;
+>>>>>>> 9ede775032aa32cf38300adae5899ef150f0ecce
     confirmCount = 0;
-    detectedAt   = 0;
+    detectedAt = 0;
+    clearAt = 0;
+    if (isEntrance) showGateStatus(true, true);
+    else {
+      tripleBeep();
+      // Update Exit status in Firestore
+      shouldUpdateExit = true;
+      exitOpenAt = millis();
+      String url = firestoreBase + "/barrier/exit?updateMask.fieldPaths=isOpen&key=" + String(API_KEY);
+      String body = "{\"fields\":{\"isOpen\":{\"booleanValue\":true}}}";
+      HTTPClient http;
+      http.begin(url);
+      http.PATCH(body);
+      http.end();
+    }
+    
+    // Optional: Log to Firestore (Anonymous)
+    if (logAction != "") pushLogToFirestore(logAction, "barrier");
   }
 }
 
@@ -504,8 +734,8 @@ void setup() {
   delay(5000);
   lcd.clear();
 
-  for (int i = 0; i < 6; i++) pinMode(irPins[i], INPUT);
-  pinMode(irEntrancePin, INPUT);
+  for (int i = 0; i < 6; i++) pinMode(irPins[i], INPUT_PULLUP);
+  pinMode(irEntrancePin, INPUT); // GPIO 34/35 don't support pullup
   pinMode(irExitPin,     INPUT);
   pinMode(buzzerPin, OUTPUT);
   buzzerOff();
@@ -573,8 +803,13 @@ void loop() {
   // 1. Read IR sensors with debounce
   updateSlots();
 
+<<<<<<< HEAD
   // 2. ✅ Update LEDs
   updateLEDs();
+=======
+  // 2. Run system tasks (polling/pushing) in non-blocking stages
+  runSystemTasks();
+>>>>>>> 9ede775032aa32cf38300adae5899ef150f0ecce
 
   // 3. Update LCD every 500ms
   if (now - lastLCDUpdate > 500) {

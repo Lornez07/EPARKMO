@@ -349,9 +349,15 @@ class _ActiveReservationCardState extends State<_ActiveReservationCard> {
                       onPressed: provider.isLoading
                           ? null
                           : provider.confirmArrival,
+<<<<<<< HEAD
                       icon: const Icon(Icons.location_on_rounded,
                           size: 16),
                       label: const Text("I Have Arrived"),
+=======
+                      icon: const Icon(Icons.sensor_door_rounded,
+                          size: 16),
+                      label: const Text("Open Barrier"),
+>>>>>>> 9ede775032aa32cf38300adae5899ef150f0ecce
                       style: ElevatedButton.styleFrom(
                         backgroundColor: AppColors.available,
                         padding:
