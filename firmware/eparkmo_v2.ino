@@ -1,12 +1,8 @@
 // ============================================================
-// E-PARK MO — SMART PARKING SYSTEM (UPDATED v3)
+// E-PARK MO — SMART PARKING SYSTEM (UPDATED v3.1)
 // ============================================================
-// CHANGES FROM v2:
-// 1. FIXED: Firestore HTTP calls moved to separate FreeRTOS task
-//           (Core 0) — hindi na nahaharang ang gate at sensors
-// 2. FIXED: Gate handlers now run uninterrupted on Core 1
-// 3. CHANGED: Firestore refresh rate → 3 seconds
-// 4. ADDED: Mutex para sa thread-safe na slot status access
+// CHANGES FROM v3:
+// 1. ADDED: Yellow LED per slot — lights up when reserved
 // ============================================================
 // PIN SUMMARY:
 // Entrance IR (dedicated) → GPIO 34
@@ -17,6 +13,7 @@
 // Buzzer                  → GPIO 4 (low level trigger)
 // LCD SDA                 → GPIO 25
 // LCD SCL                 → GPIO 26
+// LED 1-6 (reserved)      → GPIO 32,33,27,13,16,4
 // ============================================================
 
 // ============================================================
@@ -33,7 +30,6 @@
 // ============================================================
 const char* ssid     = "JC 2.4G";
 const char* password = "03212005";
-
 // ============================================================
 // FIREBASE CREDENTIALS
 // ============================================================
@@ -55,6 +51,9 @@ const int irExitPin        = 35;
 const int servoEntrancePin = 17;
 const int servoExitPin     = 14;
 const int buzzerPin        = 4;
+
+// ✅ LED pins — yellow LED per slot (reserved indicator)
+const int ledPins[6] = {32, 33, 27, 13, 16, 4};
 
 // ============================================================
 // SLOT STATUS
@@ -126,9 +125,8 @@ const unsigned long GATE_DISPLAY_MS = 3000;
 
 // ============================================================
 // FIRESTORE SETTINGS
-// ✅ 3 seconds refresh rate
 // ============================================================
-const unsigned long SLOT_PUSH_INTERVAL     = 3000;
+const unsigned long SLOT_PUSH_INTERVAL      = 3000;
 const unsigned long FIRESTORE_POLL_INTERVAL = 3000;
 const int           HTTP_TIMEOUT_MS         = 3000;
 
@@ -149,6 +147,16 @@ void tripleBeep() {
   for (int i = 0; i < 3; i++) {
     buzzerOn();  delay(200);
     buzzerOff(); if (i < 2) delay(100);
+  }
+}
+
+// ============================================================
+// HELPER — UPDATE LEDs
+// LED ON = reserved, LED OFF = available or occupied
+// ============================================================
+void updateLEDs() {
+  for (int i = 0; i < 6; i++) {
+    digitalWrite(ledPins[i], slotStatus[i] == 2 ? HIGH : LOW);
   }
 }
 
@@ -220,7 +228,6 @@ void updateSlots() {
   for (int i = 0; i < 6; i++) {
     int reading = (digitalRead(irPins[i]) == LOW) ? 1 : 0;
 
-    // Reserved slot — transition to occupied if car detected
     if (slotStatus[i] == 2) {
       if (reading == 1) {
         slotStatus[i]    = 1;
@@ -230,7 +237,6 @@ void updateSlots() {
       continue;
     }
 
-    // Normal debounce
     if (reading != slotLastState[i]) {
       if (slotDetectedAt[i] == 0) slotDetectedAt[i] = millis();
       slotConfirm[i]++;
@@ -256,7 +262,6 @@ void updateSlots() {
 void pushSlotsToFirestore() {
   if (WiFi.status() != WL_CONNECTED) return;
 
-  // Take snapshot of slot status (thread-safe)
   int snapshot[6];
   if (xSemaphoreTake(slotMutex, 100) == pdTRUE) {
     for (int i = 0; i < 6; i++) snapshot[i] = slotStatus[i];
@@ -277,7 +282,7 @@ void pushSlotsToFirestore() {
                  "&key=" + String(API_KEY);
 
     String body = "{\"fields\":{"
-                  "\"status\":{\"stringValue\"😕"" + statusStr + "\"},"
+                  "\"status\":{\"stringValue\":\"" + statusStr + "\"},"
                   "\"isSensorActive\":{\"booleanValue\":true}"
                   "}}";
 
@@ -303,7 +308,6 @@ void pushSlotsToFirestore() {
 void pollFirestore() {
   if (WiFi.status() != WL_CONNECTED) return;
 
-  // ── 1. Batch-read ALL slots ─────────────────────────────
   String slotsUrl = firestoreBase + "/slots?key=" + String(API_KEY);
   HTTPClient http;
   http.begin(slotsUrl);
@@ -312,12 +316,6 @@ void pollFirestore() {
 
   if (code == 200) {
     String payload = http.getString();
-
-    int localSnapshot[6];
-    if (xSemaphoreTake(slotMutex, 100) == pdTRUE) {
-      for (int i = 0; i < 6; i++) localSnapshot[i] = slotStatus[i];
-      xSemaphoreGive(slotMutex);
-    }
 
     for (int i = 0; i < 6; i++) {
       String slotMarker = String("/slots/") + slotIds[i];
@@ -353,7 +351,6 @@ void pollFirestore() {
   }
   http.end();
 
-  // ── 2. Poll barrier/gate ────────────────────────────────
   String barrierUrl = firestoreBase + "/barrier/gate?key=" + String(API_KEY);
   HTTPClient http2;
   http2.begin(barrierUrl);
@@ -362,13 +359,13 @@ void pollFirestore() {
 
   if (code == 200) {
     String payload = http2.getString();
-    bool isOpen = payload.indexOf("\"booleanValue\":true") > 0;
+    bool isOpen = payload.indexOf("\"booleanValue\": true") > 0 || payload.indexOf("\"booleanValue\":true") > 0;
+
 
     if (isOpen) {
       reservationTrigger = true;
       Serial.println(">> App triggered barrier open.");
 
-      // Reset isOpen in Firestore
       String resetUrl = firestoreBase + "/barrier/gate" +
                         "?updateMask.fieldPaths=isOpen" +
                         "&key=" + String(API_KEY);
@@ -387,7 +384,6 @@ void pollFirestore() {
 
 // ============================================================
 // FIRESTORE TASK — runs on Core 0
-// ✅ Hindi na nahaharang ang gate at sensors
 // ============================================================
 void firestoreTask(void* parameter) {
   unsigned long lastPush = 0;
@@ -396,19 +392,17 @@ void firestoreTask(void* parameter) {
   for (;;) {
     unsigned long now = millis();
 
-    // Push every 3 seconds
     if (now - lastPush >= SLOT_PUSH_INTERVAL) {
       lastPush = now;
       pushSlotsToFirestore();
     }
 
-    // Poll every 3 seconds (offset by 1.5s from push)
     if (now - lastPoll >= FIRESTORE_POLL_INTERVAL) {
       lastPoll = now;
       pollFirestore();
     }
 
-    vTaskDelay(100 / portTICK_PERIOD_MS); // yield every 100ms
+    vTaskDelay(100 / portTICK_PERIOD_MS);
   }
 }
 
@@ -500,7 +494,6 @@ void setup() {
   Serial.begin(115200);
   delay(1000);
 
-  // ✅ Create mutex para sa thread-safe slot access
   slotMutex = xSemaphoreCreateMutex();
 
   Wire.begin(25, 26);
@@ -516,6 +509,13 @@ void setup() {
   pinMode(irExitPin,     INPUT);
   pinMode(buzzerPin, OUTPUT);
   buzzerOff();
+
+  // ✅ LED pins — force LOW sa startup
+  for (int i = 0; i < 6; i++) {
+    gpio_set_direction((gpio_num_t)ledPins[i], GPIO_MODE_OUTPUT);
+    gpio_set_level((gpio_num_t)ledPins[i], 0);
+    pinMode(ledPins[i], OUTPUT);
+  }
 
   servoEntrance.attach(servoEntrancePin, 500, 2400);
   servoExit.attach(servoExitPin, 500, 2400);
@@ -550,16 +550,14 @@ void setup() {
                     String(PROJECT_ID) +
                     "/databases/(default)/documents";
 
-    // ✅ Start Firestore task on Core 0
-    // Main loop runs on Core 1 — gate + sensors hindi nahaharang
     xTaskCreatePinnedToCore(
-      firestoreTask,    // function
-      "FirestoreTask",  // name
-      16384,            // stack size (16KB — enough for HTTP)
-      NULL,             // parameter
-      1,                // priority
-      NULL,             // handle
-      0                 // ✅ Core 0
+      firestoreTask,
+      "FirestoreTask",
+      16384,
+      NULL,
+      1,
+      NULL,
+      0
     );
 
     Serial.println("Firestore task started on Core 0.");
@@ -568,7 +566,6 @@ void setup() {
 
 // ============================================================
 // LOOP — runs on Core 1
-// ✅ Gate handlers + IR sensors + LCD — walang interruption
 // ============================================================
 void loop() {
   unsigned long now = millis();
@@ -576,13 +573,16 @@ void loop() {
   // 1. Read IR sensors with debounce
   updateSlots();
 
-  // 2. Update LCD every 500ms
+  // 2. ✅ Update LEDs
+  updateLEDs();
+
+  // 3. Update LCD every 500ms
   if (now - lastLCDUpdate > 500) {
     lastLCDUpdate = now;
     updateLCD();
   }
 
-  // 3. Debug print every 1s
+  // 4. Debug print every 1s
   static unsigned long lastPrint = 0;
   if (now - lastPrint > 1000) {
     lastPrint = now;
@@ -599,7 +599,7 @@ void loop() {
     Serial.println(isParkingFull() ? "YES" : "NO");
   }
 
-  // 4. Gate handlers — walang interruption mula sa HTTP
+  // 5. Gate handlers
   handleGate(irEntrancePin, servoEntrance,
              entranceOpen, entranceConfirm,
              entranceOpenedAt, entranceDetectedAt,

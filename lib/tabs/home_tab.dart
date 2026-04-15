@@ -1,4 +1,4 @@
-import 'dart:ui';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:provider/provider.dart';
@@ -102,13 +102,8 @@ class HomeTab extends StatelessWidget {
                       ).animate(delay: 100.ms).fadeIn(duration: 500.ms),
                       const SizedBox(height: 24),
 
-                      // Gate status card (only for those with permission)
-                      if (provider.canShowBarrier) ...[
-                        _buildGateCard(provider)
-                            .animate(delay: 200.ms)
-                            .fadeIn(duration: 500.ms),
-                        const SizedBox(height: 24),
-                      ],
+
+
 
                       Text('Parking Slots',
                           style: AppTextStyles.headingMedium)
@@ -146,81 +141,6 @@ class HomeTab extends StatelessWidget {
           ),
         );
       },
-    );
-  }
-
-  Widget _buildGateCard(ParkingProvider provider) {
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(20),
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-        child: Container(
-          padding: const EdgeInsets.all(18),
-          decoration: provider.barrierOpen
-              ? AppDecorations.primaryGlassCard(borderRadius: 20)
-              : AppDecorations.glassCard(borderRadius: 20),
-          child: Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: (provider.barrierOpen
-                          ? AppColors.available
-                          : AppColors.textMuted)
-                      .withOpacity(0.15),
-                  borderRadius: BorderRadius.circular(14),
-                ),
-                child: Icon(
-                  Icons.sensor_door_rounded,
-                  color: provider.barrierOpen
-                      ? AppColors.available
-                      : AppColors.textMuted,
-                  size: 26,
-                ),
-              ),
-              const SizedBox(width: 14),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text('Entrance Barrier',
-                        style: AppTextStyles.headingSmall),
-                    Text(
-                      provider.barrierOpen ? 'OPEN' : 'CLOSED',
-                      style: AppTextStyles.bodyMedium.copyWith(
-                        color: provider.barrierOpen
-                            ? AppColors.available
-                            : AppColors.textMuted,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    if (provider.barrierOpen)
-                      Text('Auto-closes in ${AppStrings.barrierAutoCloseSeconds}s',
-                          style: AppTextStyles.bodySmall),
-                  ],
-                ),
-              ),
-              ElevatedButton(
-                onPressed: provider.barrierOpen
-                    ? null
-                    : provider.openBarrier,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: AppColors.primary,
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 16, vertical: 10),
-                  shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12)),
-                ),
-                child: Text(
-                  provider.barrierOpen ? 'Open' : 'Open',
-                  style: AppTextStyles.bodyMedium
-                      .copyWith(color: Colors.white),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
     );
   }
 }

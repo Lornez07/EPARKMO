@@ -2,7 +2,7 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:provider/provider.dart';
-import 'package:qr_flutter/qr_flutter.dart';
+
 import '../constants/app_constants.dart';
 import '../models/parking_slot.dart';
 import '../providers/parking_provider.dart';
@@ -39,6 +39,27 @@ class ReserveTab extends StatelessWidget {
                       const SizedBox(height: 24),
 
                       // Active reservation card
+                      if (provider.reservationParseError != null)
+                        Container(
+                          margin: const EdgeInsets.only(bottom: 24),
+                          padding: const EdgeInsets.all(16),
+                          decoration: AppDecorations.glassCard(borderColor: AppColors.error),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  const Icon(Icons.error_outline, color: AppColors.error),
+                                  const SizedBox(width: 8),
+                                  Text('Metadata Error', style: AppTextStyles.labelLarge.copyWith(color: AppColors.error)),
+                                ],
+                              ),
+                              const SizedBox(height: 8),
+                              Text(provider.reservationParseError!, style: AppTextStyles.bodyMedium),
+                            ],
+                          ),
+                        ).animate().fadeIn(duration: 400.ms),
+
                       if (provider.hasActiveReservation)
                         _ActiveReservationCard(provider: provider)
                             .animate()
@@ -203,7 +224,6 @@ class _ActiveReservationCard extends StatefulWidget {
 }
 
 class _ActiveReservationCardState extends State<_ActiveReservationCard> {
-  bool _showQr = false;
 
   String _formatDuration(Duration d) {
     final m = d.inMinutes.remainder(60).toString().padLeft(2, '0');
@@ -301,77 +321,6 @@ class _ActiveReservationCardState extends State<_ActiveReservationCard> {
               Text('${remaining.inMinutes} min remaining',
                   style: AppTextStyles.bodySmall),
 
-              // ── QR Code Section ──
-              if (res.otp != null) ...[
-                const SizedBox(height: 16),
-                GestureDetector(
-                  onTap: () => setState(() => _showQr = !_showQr),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 12, vertical: 8),
-                    decoration: BoxDecoration(
-                      color: AppColors.primary.withOpacity(0.1),
-                      borderRadius: BorderRadius.circular(10),
-                      border: Border.all(
-                          color: AppColors.primary.withOpacity(0.3)),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(
-                          _showQr
-                              ? Icons.qr_code_rounded
-                              : Icons.qr_code_2_rounded,
-                          color: AppColors.primary,
-                          size: 18,
-                        ),
-                        const SizedBox(width: 8),
-                        Text(
-                          _showQr ? 'Hide QR Code' : 'Show QR Code',
-                          style: AppTextStyles.primaryAccent,
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-                if (_showQr) ...[
-                  const SizedBox(height: 14),
-                  Center(
-                    child: Container(
-                      padding: const EdgeInsets.all(16),
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(16),
-                      ),
-                      child: QrImageView(
-                        data: 'EPARKMO:${res.slotId}:${res.otp}:${res.userId}',
-                        version: QrVersions.auto,
-                        size: 160,
-                        backgroundColor: Colors.white,
-                        eyeStyle: const QrEyeStyle(
-                          eyeShape: QrEyeShape.square,
-                          color: Color(0xFF0D1B2A),
-                        ),
-                        dataModuleStyle: const QrDataModuleStyle(
-                          dataModuleShape: QrDataModuleShape.square,
-                          color: Color(0xFF0D1B2A),
-                        ),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Center(
-                    child: Text(
-                      'Booking Code: ${res.otp}',
-                      style: AppTextStyles.bodyMedium.copyWith(
-                        color: AppColors.primary,
-                        fontWeight: FontWeight.w600,
-                        letterSpacing: 2,
-                      ),
-                    ),
-                  ),
-                ],
-              ],
 
               const SizedBox(height: 18),
               Row(
@@ -400,9 +349,9 @@ class _ActiveReservationCardState extends State<_ActiveReservationCard> {
                       onPressed: provider.isLoading
                           ? null
                           : provider.confirmArrival,
-                      icon: const Icon(Icons.sensor_door_rounded,
+                      icon: const Icon(Icons.location_on_rounded,
                           size: 16),
-                      label: const Text("Open Barrier"),
+                      label: const Text("I Have Arrived"),
                       style: ElevatedButton.styleFrom(
                         backgroundColor: AppColors.available,
                         padding:

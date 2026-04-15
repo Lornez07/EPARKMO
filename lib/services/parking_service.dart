@@ -63,54 +63,56 @@ class ParkingService {
     required UserModel user,
     required String otp,
   }) async {
-    await _db.runTransaction((txn) async {
-      // 1. Check user doesn't already have an active reservation
-      final existingRes = await txn.get(_reservationsRef.doc('${user.uid}_active'));
-      if (existingRes.exists) {
-        throw Exception('You already have an active reservation.');
-      }
+    // 1. Check user doesn't already have an active reservation
+    final existingRes = await _reservationsRef.doc('${user.uid}_active').get();
+    if (existingRes.exists) {
+      throw Exception('You already have an active reservation.');
+    }
 
-      // 2. Check slot is still available
-      final slotDoc = await txn.get(_slotsRef.doc(slot.id));
-      final slotData = slotDoc.data() as Map<String, dynamic>?;
-      if (slotData?['status'] != 'available') {
-        throw Exception('Slot ${slot.slotNumber} is no longer available.');
-      }
+    // 2. Check slot is still available
+    final slotDoc = await _slotsRef.doc(slot.id).get();
+    final slotData = slotDoc.data() as Map<String, dynamic>?;
+    if (slotData?['status'] != 'available') {
+      throw Exception('Slot ${slot.slotNumber} is no longer available.');
+    }
 
-      final now = DateTime.now();
-      final expiresAt = now.add(const Duration(minutes: AppStrings.reservationMinutes));
+    final now = DateTime.now();
+    final expiresAt = now.add(const Duration(minutes: AppStrings.reservationMinutes));
 
-      // 3. Update slot status → "reserved"
-      // ESP32 reads this and sets slotStatus[i] = 2 → LED yellow
-      txn.update(_slotsRef.doc(slot.id), {
-        'status': SlotStatus.reserved.name,
-        'userId': user.uid,
-        'reservedByName': user.name,
-      });
+    final batch = _db.batch();
 
-      // 4. Create active reservation doc (with OTP for QR/verification)
-      txn.set(_reservationsRef.doc('${user.uid}_active'), {
-        'slotId': slot.id,
-        'slotNumber': slot.slotNumber,
-        'userId': user.uid,
-        'userName': user.name,
-        'startTime': FieldValue.serverTimestamp(),
-        'expiresAt': expiresAt.toIso8601String(),
-        'status': 'active',
-        'otp': otp,
-      });
-
-      // 5. Log it
-      txn.set(_logsRef.doc(_uuid.v4()), {
-        'action': 'Slot ${slot.slotNumber} reserved by ${user.name}',
-        'slotId': slot.id,
-        'slotNumber': slot.slotNumber,
-        'userId': user.uid,
-        'userName': user.name,
-        'timestamp': FieldValue.serverTimestamp(),
-        'type': 'reservation',
-      });
+    // 3. Update slot status → "reserved"
+    batch.update(_slotsRef.doc(slot.id), {
+      'status': SlotStatus.reserved.name,
+      'userId': user.uid,
+      'reservedByName': user.name,
     });
+
+    // 4. Create active reservation doc
+    batch.set(_reservationsRef.doc('${user.uid}_active'), {
+      'slotId': slot.id,
+      'slotNumber': slot.slotNumber,
+      'userId': user.uid,
+      'userName': user.name,
+      'startTime': Timestamp.now(),
+      'expiresAt': Timestamp.fromDate(expiresAt),
+      'status': 'active',
+      'otp': otp,
+    });
+
+    // 5. Log it
+    batch.set(_logsRef.doc(_uuid.v4()), {
+      'action': 'Slot ${slot.slotNumber} reserved by ${user.name}',
+      'slotId': slot.id,
+      'slotNumber': slot.slotNumber,
+      'userId': user.uid,
+      'userName': user.name,
+      'timestamp': Timestamp.now(),
+      'type': 'reservation',
+    });
+
+    // 6. Execute atomic write
+    await batch.commit();
   }
 
   Future<void> cancel({
@@ -138,7 +140,7 @@ class ParkingService {
       'slotNumber': slotNumber,
       'userId': user.uid,
       'userName': user.name,
-      'timestamp': FieldValue.serverTimestamp(),
+      'timestamp': Timestamp.now(),
       'type': 'cancellation',
     });
 
@@ -170,7 +172,7 @@ class ParkingService {
       'slotNumber': slotNumber,
       'userId': user.uid,
       'userName': user.name,
-      'timestamp': FieldValue.serverTimestamp(),
+      'timestamp': Timestamp.now(),
       'type': 'arrival',
     });
   }
@@ -205,7 +207,7 @@ class ParkingService {
       'slotNumber': slotNumber,
       'userId': user.uid,
       'userName': user.name,
-      'timestamp': FieldValue.serverTimestamp(),
+      'timestamp': Timestamp.now(),
       'type': 'cancellation',
     });
 
@@ -227,7 +229,7 @@ class ParkingService {
     batch.set(_logsRef.doc(_uuid.v4()), {
       'action': 'Slot reset to available (passive cleanup)',
       'slotId': slotId,
-      'timestamp': FieldValue.serverTimestamp(),
+      'timestamp': Timestamp.now(),
       'type': 'system',
     });
 
@@ -260,7 +262,7 @@ class ParkingService {
       'slotNumber': 0,
       'userId': user.uid,
       'userName': user.name,
-      'timestamp': FieldValue.serverTimestamp(),
+      'timestamp': Timestamp.now(),
       'type': 'barrier',
     });
   }

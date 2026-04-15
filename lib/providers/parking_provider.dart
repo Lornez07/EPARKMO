@@ -40,6 +40,7 @@ class ParkingProvider extends ChangeNotifier {
   bool get isLoading => _isLoading;
   String? get error => _error;
   String? get pendingOtp => _pendingOtp;
+  String? reservationParseError;
 
   int get availableCount => _slots.where((s) => s.isAvailable).length;
   int get reservedCount => _slots.where((s) => s.isReserved).length;
@@ -156,43 +157,82 @@ class ParkingProvider extends ChangeNotifier {
         .doc('${_currentUser!.uid}_active')
         .snapshots()
         .listen((doc) {
-      if (doc.exists) {
+      debugPrint('🔔 RES LISTENER — exists: ${doc.exists}, data: ${doc.data()}');
+      if (doc.exists && doc.data() != null) {
         final data = doc.data()!;
-        _activeReservation = Reservation(
-          id: doc.id,
-          slotId: data['slotId'],
-          slotNumber: data['slotNumber'],
-          userId: data['userId'],
-          userName: data['userName'],
-          startTime: (data['startTime'] as Timestamp?)?.toDate() ?? DateTime.now(),
-          expiresAt: DateTime.parse(data['expiresAt']),
-          status: ReservationStatus.active,
-          otp: data['otp'],
-        );
+        try {
+          final parsed = _parseReservation(doc.id, data);
+          if (parsed != null) {
+            _activeReservation = parsed;
+            reservationParseError = null;
+            debugPrint('✅ Parsed OK — remaining: ${_activeReservation!.remaining}');
+          }
+        } catch (e) {
+          debugPrint('❌ PARSE ERROR: $e');
+          reservationParseError = e.toString();
+          _activeReservation = null;
+        }
 
         // ─── Lazy Cleanup ──────────────────────────────────────────────────
-        // If app just fetched this but it's already expired, clean it up NOW.
-        if (_activeReservation!.remaining == Duration.zero) {
+        if (_activeReservation != null && _activeReservation!.remaining == Duration.zero) {
+          debugPrint('⏰ Expired immediately — cleaning up');
            _service.expireReservation(
             slotId: _activeReservation!.slotId,
             slotNumber: _activeReservation!.slotNumber,
             user: _currentUser!,
-          );
-        } else {
+          ).catchError((e) {
+            reservationParseError = 'Cleanup Error: $e';
+            notifyListeners();
+          });
+          _activeReservation = null;
+        } else if (_activeReservation != null) {
+          debugPrint('✅ ACTIVE — card should show now');
           _startExpiryTimer();
         }
       } else {
+        debugPrint('📭 No reservation doc — clearing');
         _activeReservation = null;
+        reservationParseError = null;
         _expiryTimer?.cancel();
       }
+      debugPrint('🔁 hasActiveReservation = $hasActiveReservation');
+      notifyListeners();
+    }, onError: (e) {
+      debugPrint('🔥 RES STREAM ERROR: $e');
+      reservationParseError = 'Stream error: $e';
       notifyListeners();
     });
   }
 
-  /// Periodically check if the active reservation has expired
+  /// Parse a Firestore reservation document into a Reservation model.
+  /// Returns null if data is invalid (caller should handle).
+  Reservation? _parseReservation(String docId, Map<String, dynamic> data) {
+    DateTime parseDate(dynamic value, {required DateTime fallback}) {
+      if (value == null) return fallback;
+      if (value is Timestamp) return value.toDate();
+      if (value is DateTime) return value;
+      if (value is String) return DateTime.tryParse(value) ?? fallback;
+      if (value is int) return DateTime.fromMillisecondsSinceEpoch(value);
+      return fallback;
+    }
+
+    return Reservation(
+      id: docId,
+      slotId: data['slotId'] ?? '',
+      slotNumber: data['slotNumber'] ?? 0,
+      userId: data['userId'] ?? '',
+      userName: data['userName'] ?? 'User',
+      startTime: parseDate(data['startTime'], fallback: DateTime.now()),
+      expiresAt: parseDate(data['expiresAt'], fallback: DateTime.now().add(const Duration(minutes: 15))),
+      status: ReservationStatus.active,
+      otp: data['otp']?.toString(),
+    );
+  }
+
+  /// Tick every second to update countdown display and check expiry
   void _startExpiryTimer() {
     _expiryTimer?.cancel();
-    _expiryTimer = Timer.periodic(const Duration(seconds: 5), (_) {
+    _expiryTimer = Timer.periodic(const Duration(seconds: 1), (_) {
       if (_activeReservation == null || _currentUser == null) {
         _expiryTimer?.cancel();
         return;
@@ -203,8 +243,10 @@ class ParkingProvider extends ChangeNotifier {
           slotNumber: _activeReservation!.slotNumber,
           user: _currentUser!,
         );
+        _activeReservation = null;
         _expiryTimer?.cancel();
       }
+      notifyListeners(); // Always rebuild so countdown ticks
     });
   }
 
@@ -248,8 +290,29 @@ class ParkingProvider extends ChangeNotifier {
       // OTP verified → create reservation
       await _service.reserve(slot: slot, user: _currentUser!, otp: enteredOtp);
       _pendingOtp = null;
+
+      // ─── DIRECT UI UPDATE ─────────────────────────────────────────────
+      // Don't rely solely on the Firestore listener — set reservation now
+      // so the Active Reservation Card appears immediately.
+      final now = DateTime.now();
+      _activeReservation = Reservation(
+        id: '${_currentUser!.uid}_active',
+        slotId: slot.id,
+        slotNumber: slot.slotNumber,
+        userId: _currentUser!.uid,
+        userName: _currentUser!.name,
+        startTime: now,
+        expiresAt: now.add(const Duration(minutes: AppStrings.reservationMinutes)),
+        status: ReservationStatus.active,
+        otp: enteredOtp,
+      );
+      _startExpiryTimer();
+      debugPrint('✅ DIRECT SET — activeReservation for slot ${slot.slotNumber}');
+      // ─────────────────────────────────────────────────────────────────
+
       return null; // success
-    } catch (e) {
+    } catch (e, stack) {
+      debugPrint('RESERVE_ERROR: $e\n$stack');
       return e.toString().replaceFirst('Exception: ', '');
     } finally {
       _setLoading(false);
@@ -276,6 +339,8 @@ class ParkingProvider extends ChangeNotifier {
         slotNumber: _activeReservation!.slotNumber,
         user: _currentUser!,
       );
+      _activeReservation = null;
+      _expiryTimer?.cancel();
     } catch (e) {
       _error = e.toString();
     } finally {
