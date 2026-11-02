@@ -41,7 +41,8 @@ class OtpService {
   Future<void> _sendEmailViaProxy(String recipient, String otp) async {
     print('DEBUG: Attempting to send OTP email via Proxy to $recipient...');
 
-    if (AppStrings.googleScriptUrl.contains('YOUR_GOOGLE_SCRIPT_WEB_APP_URL_HERE')) {
+    if (AppStrings.googleScriptUrl
+        .contains('YOUR_GOOGLE_SCRIPT_WEB_APP_URL_HERE')) {
       print('❌ Google Script URL not configured in app_constants.dart.');
       return;
     }

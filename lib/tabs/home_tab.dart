@@ -1,14 +1,16 @@
-
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:provider/provider.dart';
 import '../constants/app_constants.dart';
 import '../providers/parking_provider.dart';
-import '../widgets/slot_card.dart';
+import '../widgets/lot_map.dart';
 import '../widgets/stat_card.dart';
 
 class HomeTab extends StatelessWidget {
-  const HomeTab({super.key});
+  /// The desktop rail already carries the brand, so the inline logo is hidden.
+  final bool showBrand;
+
+  const HomeTab({super.key, this.showBrand = true});
 
   @override
   Widget build(BuildContext context) {
@@ -20,8 +22,7 @@ class HomeTab extends StatelessWidget {
             slivers: [
               SliverToBoxAdapter(
                 child: Padding(
-                  padding:
-                      const EdgeInsets.fromLTRB(20, 20, 20, 0),
+                  padding: const EdgeInsets.fromLTRB(20, 20, 20, 0),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -33,41 +34,48 @@ class HomeTab extends StatelessWidget {
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 Text(
-                                  'Hello, ${provider.currentUser?.name.split(' ').first ?? 'User'} 👋',
+                                  'Hello, ${provider.currentUser?.name.split(' ').first ?? 'User'}',
                                   style: AppTextStyles.headingSmall,
                                 ),
-                                const SizedBox(height: 2),
+                                const SizedBox(height: AppSpacing.xs),
                                 Text('Parking Overview',
                                     style: AppTextStyles.displayMedium),
                               ],
                             ),
                           ),
-                          Container(
-                            width: 50,
-                            height: 50,
-                            padding: const EdgeInsets.all(2), // Subtle padding for a professional frame
-                            decoration: BoxDecoration(
-                              borderRadius: BorderRadius.circular(14),
-                              color: AppColors.primary, // Solid brand color for perfect blending
-                              boxShadow: [
-                                BoxShadow(
-                                  color: AppColors.primary.withOpacity(0.2),
-                                  blurRadius: 15,
-                                  spreadRadius: 1,
-                                )
-                              ],
-                            ),
-                            child: ClipRRect(
-                              borderRadius: BorderRadius.circular(12),
-                              child: Image.asset(
-                                'assets/images/app_logo.png',
-                                fit: BoxFit.cover, // Fill the container seamlessly
+                          // The rail already carries the brand on desktop.
+                          if (showBrand)
+                            Container(
+                              width: 50,
+                              height: 50,
+                              padding: const EdgeInsets.all(
+                                  2), // Subtle padding for a professional frame
+                              decoration: BoxDecoration(
+                                borderRadius:
+                                    BorderRadius.circular(AppRadius.md),
+                                color: AppColors
+                                    .primary, // Solid brand color for perfect blending
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: AppColors.primary.withOpacity(0.2),
+                                    blurRadius: 15,
+                                    spreadRadius: 1,
+                                  )
+                                ],
+                              ),
+                              child: ClipRRect(
+                                borderRadius:
+                                    BorderRadius.circular(AppRadius.md),
+                                child: Image.asset(
+                                  'assets/images/app_logo.png',
+                                  fit: BoxFit
+                                      .cover, // Fill the container seamlessly
+                                ),
                               ),
                             ),
-                          ),
                         ],
                       ).animate().fadeIn(duration: 500.ms),
-                      const SizedBox(height: 24),
+                      const SizedBox(height: AppSpacing.xl),
 
                       // Stats row
                       Row(
@@ -75,79 +83,80 @@ class HomeTab extends StatelessWidget {
                           Expanded(
                             child: StatCard(
                               label: 'Available',
-                              value: provider.availableCount.toString(),
+                              value: provider.slots.isEmpty
+                                  ? '–'
+                                  : provider.availableCount.toString(),
                               icon: Icons.check_circle_outline_rounded,
                               color: AppColors.available,
                             ),
                           ),
-                          const SizedBox(width: 10),
+                          const SizedBox(width: AppSpacing.md),
                           Expanded(
                             child: StatCard(
                               label: 'Reserved',
-                              value: provider.reservedCount.toString(),
+                              value: provider.slots.isEmpty
+                                  ? '–'
+                                  : provider.reservedCount.toString(),
                               icon: Icons.bookmark_rounded,
                               color: AppColors.reserved,
                             ),
                           ),
-                          const SizedBox(width: 10),
+                          const SizedBox(width: AppSpacing.md),
                           Expanded(
                             child: StatCard(
                               label: 'Occupied',
-                              value: provider.occupiedCount.toString(),
+                              value: provider.slots.isEmpty
+                                  ? '–'
+                                  : provider.occupiedCount.toString(),
                               icon: Icons.directions_car_rounded,
                               color: AppColors.occupied,
                             ),
                           ),
                         ],
                       ).animate(delay: 100.ms).fadeIn(duration: 500.ms),
-                      const SizedBox(height: 24),
-
-<<<<<<< HEAD
-
-
-=======
-                      // Gate status card (only for those with permission)
-                      if (provider.canShowBarrier) ...[
-                        _buildGateCard(provider, isEntrance: true)
-                            .animate(delay: 200.ms)
-                            .fadeIn(duration: 500.ms),
-                        const SizedBox(height: 12),
-                        _buildGateCard(provider, isEntrance: false)
-                            .animate(delay: 300.ms)
-                            .fadeIn(duration: 500.ms),
-                        const SizedBox(height: 24),
-                      ],
->>>>>>> 9ede775032aa32cf38300adae5899ef150f0ecce
-
-                      Text('Parking Slots',
-                          style: AppTextStyles.headingMedium)
-                          .animate(delay: 200.ms).fadeIn(duration: 400.ms),
-                      const SizedBox(height: 14),
+                      const SizedBox(height: AppSpacing.xl),
+                      Text('Parking Lot', style: AppTextStyles.headingMedium)
+                          .animate(delay: 200.ms)
+                          .fadeIn(duration: 400.ms),
+                      const SizedBox(height: AppSpacing.sm),
+                      Text(
+                        provider.slots.isEmpty
+                            ? 'Waiting for sensor data'
+                            : '${provider.availableCount} of ${AppStrings.totalSlots} bays free',
+                        style: AppTextStyles.bodySmall,
+                      ).animate(delay: 220.ms).fadeIn(duration: 400.ms),
+                      const SizedBox(height: AppSpacing.lg),
                     ],
                   ),
                 ),
               ),
 
-              // Slots grid
-              SliverPadding(
-                padding: const EdgeInsets.fromLTRB(20, 0, 20, 120),
-                sliver: SliverGrid(
-                  delegate: SliverChildBuilderDelegate(
-                    (ctx, i) {
-                      final slot = provider.slots[i];
-                      return SlotCard(slot: slot)
-                          .animate(delay: Duration(milliseconds: 100 + i * 60))
-                          .fadeIn(duration: 400.ms)
-                          .slideY(begin: 0.2, end: 0);
-                    },
-                    childCount: provider.slots.length,
-                  ),
-                  gridDelegate:
-                      const SliverGridDelegateWithFixedCrossAxisCount(
-                    crossAxisCount: 2,
-                    mainAxisSpacing: 14,
-                    crossAxisSpacing: 14,
-                    childAspectRatio: 1.05,
+              // Lot plan — skeleton until the first snapshot, error banner on
+              // failure, live plan once slots arrive.
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(AppSpacing.page, 0,
+                      AppSpacing.page, AppLayout.bottomNavInset),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      if (provider.error != null) ...[
+                        _ErrorBanner(
+                          message: provider.error!,
+                          onDismiss: provider.clearError,
+                        ),
+                        const SizedBox(height: AppSpacing.md),
+                      ],
+                      if (provider.slots.isEmpty && provider.error == null)
+                        const LotMapSkeleton()
+                      else if (provider.slots.isEmpty)
+                        const _NoDataPanel()
+                      else
+                        LotMap(
+                          slots: provider.slots,
+                          myReservation: provider.activeReservation,
+                        ).animate(delay: 260.ms).fadeIn(duration: 400.ms),
+                    ],
                   ),
                 ),
               ),
@@ -157,86 +166,83 @@ class HomeTab extends StatelessWidget {
       },
     );
   }
-<<<<<<< HEAD
-=======
+}
 
-  Widget _buildGateCard(ParkingProvider provider, {required bool isEntrance}) {
-    final bool isOpen = isEntrance ? provider.barrierOpen : provider.exitBarrierOpen;
-    final String label = isEntrance ? 'Entrance Barrier' : 'Exit Barrier';
+// ─── States ───────────────────────────────────────────────────────────────────
 
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(20),
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-        child: Container(
-          padding: const EdgeInsets.all(18),
-          decoration: isOpen
-              ? AppDecorations.primaryGlassCard(borderRadius: 20)
-              : AppDecorations.glassCard(borderRadius: 20),
-          child: Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: (isOpen
-                          ? AppColors.available
-                          : AppColors.textMuted)
-                      .withOpacity(0.15),
-                  borderRadius: BorderRadius.circular(14),
-                ),
-                child: Icon(
-                  isEntrance ? Icons.sensor_door_rounded : Icons.door_back_door_rounded,
-                  color: isOpen
-                      ? AppColors.available
-                      : AppColors.textMuted,
-                  size: 26,
-                ),
-              ),
-              const SizedBox(width: 14),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(label,
-                        style: AppTextStyles.headingSmall),
-                    Text(
-                      isOpen ? 'OPENING' : 'CLOSED',
-                      style: AppTextStyles.bodyMedium.copyWith(
-                        color: isOpen
-                            ? AppColors.available
-                            : AppColors.textMuted,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    if (isOpen && isEntrance)
-                      Text('Auto-closes when clear',
-                          style: AppTextStyles.bodySmall),
-                  ],
-                ),
-              ),
-              if (provider.currentUser?.isAdmin ?? false)
-                ElevatedButton(
-                  onPressed: isOpen
-                      ? null
-                      : () => provider.openBarrier(), // Admin override
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: AppColors.primary,
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 16, vertical: 10),
-                    shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12)),
-                  ),
-                  child: Text(
-                    'Open',
-                    style: AppTextStyles.bodyMedium
-                        .copyWith(color: Colors.white),
-                  ),
-                ),
-            ],
+class _ErrorBanner extends StatelessWidget {
+  final String message;
+  final VoidCallback onDismiss;
+
+  const _ErrorBanner({required this.message, required this.onDismiss});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(AppSpacing.lg),
+      decoration: BoxDecoration(
+        color: AppColors.error.withOpacity(0.10),
+        borderRadius: BorderRadius.circular(AppRadius.lg),
+        border: Border.all(color: AppColors.error.withOpacity(0.35)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Icon(Icons.error_outline_rounded,
+              size: 20, color: AppColors.error),
+          const SizedBox(width: AppSpacing.md),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Live data unavailable',
+                    style: AppTextStyles.bodyMedium.copyWith(
+                      color: AppColors.textPrimary,
+                      fontWeight: FontWeight.w600,
+                    )),
+                const SizedBox(height: AppSpacing.xs),
+                Text(message, style: AppTextStyles.bodySmall),
+              ],
+            ),
           ),
-        ),
+          TextButton(
+            onPressed: onDismiss,
+            child: Text('Dismiss', style: AppTextStyles.labelLarge),
+          ),
+        ],
       ),
     );
   }
->>>>>>> 9ede775032aa32cf38300adae5899ef150f0ecce
+}
+
+class _NoDataPanel extends StatelessWidget {
+  const _NoDataPanel();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(
+          horizontal: AppSpacing.lg, vertical: AppSpacing.xxl),
+      decoration: BoxDecoration(
+        color: AppColors.bgCard,
+        borderRadius: BorderRadius.circular(AppRadius.lg),
+        border: Border.all(color: AppColors.glassBorder),
+      ),
+      child: Column(
+        children: [
+          const Icon(Icons.sensors_off_rounded,
+              size: 32, color: AppColors.textMuted),
+          const SizedBox(height: AppSpacing.md),
+          Text('No bays are reporting', style: AppTextStyles.headingSmall),
+          const SizedBox(height: AppSpacing.xs),
+          Text(
+            'The lot sensors have not sent any data. Reopen this screen once '
+            'they are back online.',
+            style: AppTextStyles.bodySmall,
+            textAlign: TextAlign.center,
+          ),
+        ],
+      ),
+    );
+  }
 }

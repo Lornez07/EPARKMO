@@ -1,4 +1,4 @@
-enum ReservationStatus { active, completed, cancelled, expired }
+enum ReservationStatus { active, arrived, completed, cancelled, expired }
 
 class Reservation {
   final String id;

@@ -8,6 +8,8 @@ class ParkingSlot {
   final double? distanceCm;
   final String? userId;
   final String? reservedByName;
+  final String? reservedByPlate;
+  final String? reservedByCarModel;
 
   const ParkingSlot({
     required this.id,
@@ -17,6 +19,8 @@ class ParkingSlot {
     this.distanceCm,
     this.userId,
     this.reservedByName,
+    this.reservedByPlate,
+    this.reservedByCarModel,
   });
 
   bool get isAvailable => status == SlotStatus.available;
@@ -31,6 +35,8 @@ class ParkingSlot {
     double? distanceCm,
     String? userId,
     String? reservedByName,
+    String? reservedByPlate,
+    String? reservedByCarModel,
   }) {
     return ParkingSlot(
       id: id ?? this.id,
@@ -40,6 +46,8 @@ class ParkingSlot {
       distanceCm: distanceCm ?? this.distanceCm,
       userId: userId ?? this.userId,
       reservedByName: reservedByName ?? this.reservedByName,
+      reservedByPlate: reservedByPlate ?? this.reservedByPlate,
+      reservedByCarModel: reservedByCarModel ?? this.reservedByCarModel,
     );
   }
 
@@ -51,6 +59,8 @@ class ParkingSlot {
         'distanceCm': distanceCm,
         'userId': userId,
         'reservedByName': reservedByName,
+        'reservedByPlate': reservedByPlate,
+        'reservedByCarModel': reservedByCarModel,
       };
 
   factory ParkingSlot.fromMap(Map<String, dynamic> map) => ParkingSlot(
@@ -64,5 +74,7 @@ class ParkingSlot {
         distanceCm: map['distanceCm']?.toDouble(),
         userId: map['userId'],
         reservedByName: map['reservedByName'],
+        reservedByPlate: map['reservedByPlate'],
+        reservedByCarModel: map['reservedByCarModel'],
       );
 }

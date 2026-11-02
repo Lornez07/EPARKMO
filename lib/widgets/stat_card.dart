@@ -19,7 +19,7 @@ class StatCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ClipRRect(
-      borderRadius: BorderRadius.circular(16),
+      borderRadius: BorderRadius.circular(AppRadius.lg),
       child: BackdropFilter(
         filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
         child: Container(
@@ -33,7 +33,7 @@ class StatCard extends StatelessWidget {
                 color.withOpacity(0.03),
               ],
             ),
-            borderRadius: BorderRadius.circular(16),
+            borderRadius: BorderRadius.circular(AppRadius.lg),
             border: Border.all(color: color.withOpacity(0.3)),
           ),
           child: Column(
@@ -41,10 +41,10 @@ class StatCard extends StatelessWidget {
             mainAxisSize: MainAxisSize.min,
             children: [
               Icon(icon, color: color, size: 20),
-              const SizedBox(height: 8),
+              const SizedBox(height: AppSpacing.sm),
               Text(value,
                   style: AppTextStyles.displayMedium.copyWith(color: color)),
-              const SizedBox(height: 2),
+              const SizedBox(height: AppSpacing.xs),
               Text(label, style: AppTextStyles.bodySmall),
             ],
           ),

@@ -55,6 +55,7 @@ class ParkingLog {
         return const Color(0xFF8BA5BE);
     }
   }
+
   Map<String, dynamic> toMap() => {
         'id': id,
         'action': action,
@@ -66,21 +67,30 @@ class ParkingLog {
         'type': type.name,
       };
 
-  factory ParkingLog.fromMap(Map<String, dynamic> map) => ParkingLog(
-        id: map['id'] ?? '',
-        action: map['action'] ?? '',
-        slotId: map['slotId'] ?? '',
-        slotNumber: map['slotNumber'] ?? 0,
-        userId: map['userId'] ?? '',
-        userName: map['userName'] ?? '',
-        timestamp: (map['timestamp'] is Timestamp)
-            ? (map['timestamp'] as Timestamp).toDate()
-            : DateTime.parse(map['timestamp'] ?? DateTime.now().toIso8601String()),
-        type: LogType.values.firstWhere(
-          (e) => e.name == map['type'],
-          orElse: () => LogType.info,
-        ),
-      );
+  factory ParkingLog.fromMap(Map<String, dynamic> map) {
+    DateTime parseDate(dynamic value) {
+      if (value == null) return DateTime.now();
+      if (value is Timestamp) return value.toDate();
+      if (value is DateTime) return value;
+      if (value is String) return DateTime.tryParse(value) ?? DateTime.now();
+      if (value is int) return DateTime.fromMillisecondsSinceEpoch(value);
+      return DateTime.now();
+    }
+
+    return ParkingLog(
+      id: map['id']?.toString() ?? '',
+      action: map['action']?.toString() ?? 'Unknown Action',
+      slotId: map['slotId']?.toString() ?? '',
+      slotNumber: int.tryParse(map['slotNumber']?.toString() ?? '0') ?? 0,
+      userId: map['userId']?.toString() ?? '',
+      userName: map['userName']?.toString() ?? '',
+      timestamp: parseDate(map['timestamp']),
+      type: LogType.values.firstWhere(
+        (e) => e.name == map['type'],
+        orElse: () => LogType.info,
+      ),
+    );
+  }
 }
 
 enum LogType { reservation, cancellation, arrival, departure, barrier, info }

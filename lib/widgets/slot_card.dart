@@ -55,7 +55,7 @@ class SlotCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ClipRRect(
-      borderRadius: BorderRadius.circular(20),
+      borderRadius: BorderRadius.circular(AppRadius.lg),
       child: BackdropFilter(
         filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
         child: Container(
@@ -68,7 +68,7 @@ class SlotCard extends StatelessWidget {
                 _statusColor.withOpacity(0.03),
               ],
             ),
-            borderRadius: BorderRadius.circular(20),
+            borderRadius: BorderRadius.circular(AppRadius.lg),
             border: Border.all(color: _statusColor.withOpacity(0.35)),
             boxShadow: [
               BoxShadow(
@@ -96,18 +96,17 @@ class SlotCard extends StatelessWidget {
                       color: _statusColor.withOpacity(0.15),
                       shape: BoxShape.circle,
                     ),
-                    child: Icon(_statusIcon,
-                        color: _statusColor, size: 18),
+                    child: Icon(_statusIcon, color: _statusColor, size: 18),
                   ),
                 ],
               ),
               const Spacer(),
               Container(
-                padding: const EdgeInsets.symmetric(
-                    horizontal: 10, vertical: 4),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                 decoration: BoxDecoration(
                   color: _statusColor.withOpacity(0.15),
-                  borderRadius: BorderRadius.circular(8),
+                  borderRadius: BorderRadius.circular(AppRadius.md),
                 ),
                 child: Text(
                   _statusLabel,
@@ -118,7 +117,7 @@ class SlotCard extends StatelessWidget {
                 ),
               ),
               if (slot.reservedByName != null) ...[
-                const SizedBox(height: 4),
+                const SizedBox(height: AppSpacing.xs),
                 Text(
                   slot.reservedByName!,
                   style: AppTextStyles.bodySmall,
@@ -126,8 +125,31 @@ class SlotCard extends StatelessWidget {
                   overflow: TextOverflow.ellipsis,
                 ),
               ],
+              if (slot.reservedByPlate != null) ...[
+                const SizedBox(height: AppSpacing.xs),
+                Text(
+                  slot.reservedByPlate!,
+                  style: AppTextStyles.bodySmall.copyWith(
+                    fontWeight: FontWeight.w700,
+                    color: _statusColor.withOpacity(0.85),
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
+              if (slot.reservedByCarModel != null) ...[
+                const SizedBox(height: 1),
+                Text(
+                  slot.reservedByCarModel!,
+                  style: AppTextStyles.bodySmall.copyWith(
+                    color: AppColors.textSecondary,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
               if (slot.isSensorActive && slot.distanceCm != null) ...[
-                const SizedBox(height: 4),
+                const SizedBox(height: AppSpacing.xs),
                 Text(
                   '${slot.distanceCm!.toStringAsFixed(1)} cm',
                   style: AppTextStyles.bodySmall,

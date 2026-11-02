@@ -14,13 +14,13 @@ class AuthService {
 
   // Mock data for fallback or mock mode
   static final Map<String, UserModel> _mockUsers = {
-    AppStrings.guestEmail: UserModel(
+    AppStrings.guestEmail: const UserModel(
       uid: 'mock-guest-uid',
       email: AppStrings.guestEmail,
       name: 'Guest User',
       role: 'guest',
     ),
-    AppStrings.adminEmail: UserModel(
+    AppStrings.adminEmail: const UserModel(
       uid: 'mock-admin-uid',
       email: AppStrings.adminEmail,
       name: 'Admin User',
@@ -70,6 +70,7 @@ class AuthService {
     required String email,
     required String password,
     required String name,
+    required List<CarModel> cars,
   }) async {
     if (kUseMockMode) {
       await Future.delayed(const Duration(milliseconds: 800));
@@ -82,6 +83,7 @@ class AuthService {
         email: trimmed,
         name: name,
         role: 'guest',
+        cars: cars,
       );
       _mockUsers[trimmed] = newUser;
       _currentUser = newUser;
@@ -98,11 +100,38 @@ class AuthService {
         email: email.trim(),
         name: name,
         role: 'guest',
+        cars: cars,
       );
 
       await _db.collection('users').doc(user.uid).set(user.toMap());
       _currentUser = user;
       return user;
+    } catch (e) {
+      rethrow;
+    }
+  }
+
+  Future<void> updateProfile({
+    required String name,
+    required List<CarModel> cars,
+  }) async {
+    if (_currentUser == null) return;
+
+    if (kUseMockMode) {
+      await Future.delayed(const Duration(milliseconds: 500));
+      _currentUser = _currentUser!.copyWith(name: name, cars: cars);
+      final trimmed = _currentUser!.email.toLowerCase();
+      _mockUsers[trimmed] = _currentUser!;
+      return;
+    }
+
+    try {
+      final updatedUser = _currentUser!.copyWith(name: name, cars: cars);
+      await _db.collection('users').doc(updatedUser.uid).update({
+        'name': name,
+        'cars': cars.map((c) => c.toMap()).toList(),
+      });
+      _currentUser = updatedUser;
     } catch (e) {
       rethrow;
     }

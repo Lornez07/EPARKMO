@@ -15,8 +15,7 @@ class LogEntry extends StatelessWidget {
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-      decoration: AppDecorations.glassCard(
-          opacity: 0.07, borderRadius: 14),
+      decoration: AppDecorations.glassCard(opacity: 0.07, borderRadius: 14),
       child: Row(
         children: [
           // Icon badge
@@ -25,11 +24,11 @@ class LogEntry extends StatelessWidget {
             height: 40,
             decoration: BoxDecoration(
               color: log.color.withOpacity(0.15),
-              borderRadius: BorderRadius.circular(12),
+              borderRadius: BorderRadius.circular(AppRadius.md),
             ),
             child: Icon(log.icon, color: log.color, size: 18),
           ),
-          const SizedBox(width: 12),
+          const SizedBox(width: AppSpacing.md),
           // Content
           Expanded(
             child: Column(
@@ -39,12 +38,12 @@ class LogEntry extends StatelessWidget {
                     style: AppTextStyles.bodyLarge,
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis),
-                const SizedBox(height: 2),
+                const SizedBox(height: AppSpacing.xs),
                 Text(log.userName, style: AppTextStyles.bodySmall),
               ],
             ),
           ),
-          const SizedBox(width: 8),
+          const SizedBox(width: AppSpacing.sm),
           // Timestamp
           Column(
             crossAxisAlignment: CrossAxisAlignment.end,

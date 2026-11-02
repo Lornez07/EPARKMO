@@ -18,7 +18,7 @@ class _SplashScreenState extends State<SplashScreen> {
   }
 
   _navigateToLogin() async {
-    await Future.delayed(const Duration(seconds: 3));
+    await Future.delayed(const Duration(milliseconds: 1600));
     if (!mounted) return;
     Navigator.pushReplacement(
       context,
@@ -64,18 +64,8 @@ class _SplashScreenState extends State<SplashScreen> {
               mainAxisSize: MainAxisSize.min,
               children: [
                 Container(
-                  width: 160,
-                  height: 160,
-                  decoration: BoxDecoration(
-                    // Subtle shadow to add depth without showing edges
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withOpacity(0.1),
-                        blurRadius: 30,
-                        spreadRadius: 5,
-                      ),
-                    ],
-                  ),
+                  width: 280,
+                  height: 280,
                   child: Image.asset(
                     'assets/images/app_logo.png',
                     fit: BoxFit.cover,
@@ -87,29 +77,6 @@ class _SplashScreenState extends State<SplashScreen> {
                         curve: Curves.elasticOut,
                         begin: const Offset(0.5, 0.5))
                     .fadeIn(duration: 500.ms),
-                const SizedBox(height: 32),
-                Text(
-                  AppStrings.appName,
-                  style: AppTextStyles.displayLarge.copyWith(
-                    color: Colors.white,
-                    fontSize: 36,
-                    letterSpacing: 2,
-                  ),
-                )
-                    .animate(delay: 400.ms)
-                    .fadeIn(duration: 600.ms)
-                    .slideY(begin: 0.2, end: 0),
-                const SizedBox(height: 8),
-                Text(
-                  'SMART PARKING SOLUTION',
-                  style: AppTextStyles.labelLarge.copyWith(
-                    color: Colors.white.withOpacity(0.7),
-                    letterSpacing: 4,
-                    fontSize: 10,
-                  ),
-                )
-                    .animate(delay: 700.ms)
-                    .fadeIn(duration: 600.ms),
               ],
             ),
           ),

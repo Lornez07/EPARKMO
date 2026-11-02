@@ -43,8 +43,12 @@ class ParkingProvider extends ChangeNotifier {
   bool get exitBarrierOpen => _exitBarrierOpen;
   bool get isLoading => _isLoading;
   String? get error => _error;
+
   String? get pendingOtp => _pendingOtp;
   String? reservationParseError;
+  String? logStreamError;
+  int logsSkippedCount = 0;
+  String? lastLogParseError;
 
   int get availableCount => _slots.where((s) => s.isAvailable).length;
   int get reservedCount => _slots.where((s) => s.isReserved).length;
@@ -56,8 +60,14 @@ class ParkingProvider extends ChangeNotifier {
 
   bool get hasActiveReservation => _activeReservation != null;
 
+  /// Checks if the user has an active reservation document OR is physically assigned to any slot right now.
+  bool get isUserCurrentlyOccupyingOrReserved =>
+      _activeReservation != null ||
+      _slots.any((s) => s.userId == _currentUser?.uid && !s.isAvailable);
+
   /// Control Visibility: Show only for Admins OR Users with an active reservation
-  bool get canShowBarrier => (_currentUser?.isAdmin ?? false) || hasActiveReservation;
+  bool get canShowBarrier =>
+      (_currentUser?.isAdmin ?? false) || hasActiveReservation;
 
   void clearError() {
     _error = null;
@@ -85,12 +95,30 @@ class ParkingProvider extends ChangeNotifier {
     required String email,
     required String password,
     required String name,
+    required List<CarModel> cars,
   }) async {
     _setLoading(true);
     try {
-      final user = await _auth.register(email: email, password: password, name: name);
+      final user = await _auth.register(
+          email: email, password: password, name: name, cars: cars);
       _currentUser = user;
       _initFirebaseListeners();
+      return true;
+    } catch (e) {
+      _error = e.toString().replaceFirst('Exception: ', '');
+      notifyListeners();
+      return false;
+    } finally {
+      _setLoading(false);
+    }
+  }
+
+  Future<bool> updateProfile(String name, List<CarModel> cars) async {
+    _setLoading(true);
+    try {
+      await _auth.updateProfile(name: name, cars: cars);
+      _currentUser = _auth.currentUser;
+      notifyListeners();
       return true;
     } catch (e) {
       _error = e.toString().replaceFirst('Exception: ', '');
@@ -119,26 +147,28 @@ class ParkingProvider extends ChangeNotifier {
 
     // Slots — also watches for reserved→occupied transitions (arrival completion)
     _slotsSub = _service.getSlotsStream().listen((data) {
-      final oldSlots = _slots;
       _slots = data;
 
-      // Auto-complete arrival: if user's reserved slot became occupied via sensor
-      if (_activeReservation != null) {
+      // Auto-complete arrival: if user's reserved slot is now occupied via sensor,
+      // complete the reservation automatically — no need for "I Have Arrived" button.
+      // This handles both the exact transition AND cases where the app reloads
+      // after the car was already parked.
+      if (_activeReservation != null &&
+          _activeReservation!.status != ReservationStatus.arrived) {
         final resSlotId = _activeReservation!.slotId;
-        final newSlot = data.where((s) => s.id == resSlotId).firstOrNull;
-        final oldSlot = oldSlots.where((s) => s.id == resSlotId).firstOrNull;
+        final currentSlot = data.where((s) => s.id == resSlotId).firstOrNull;
 
-        if (newSlot != null &&
-            oldSlot != null &&
-            oldSlot.isReserved &&
-            newSlot.isOccupied) {
-          // Sensor confirmed car parked → clean up reservation
+        if (currentSlot != null && currentSlot.isOccupied) {
+          debugPrint(
+              '🚗 Sensor detected car in reserved slot — auto-completing arrival');
           _service.completeArrival(userId: _currentUser!.uid);
+          _activeReservation = null;
+          _expiryTimer?.cancel();
         }
       }
 
       // ─── Passive Expiration/Metadata Cleanup ───────────────────────────
-      // If we see a slot that is "available" in Firestore but still has 
+      // If we see a slot that is "available" in Firestore but still has
       // a userId, it means it wasn't cleaned up properly (e.g., car left).
       for (final slot in data) {
         if (slot.status == SlotStatus.available && slot.userId != null) {
@@ -149,11 +179,46 @@ class ParkingProvider extends ChangeNotifier {
       notifyListeners();
     });
 
-    // Logs
-    _logsSub = _service.getLogsStream().listen((data) {
-      _logs = data;
+    // Logs — load via Future to prevent silent Stream failures
+    fetchLogs();
+  }
+
+  Future<void> fetchLogs() async {
+    try {
+      logStreamError = null;
+      lastLogParseError = null;
+      logsSkippedCount = 0;
       notifyListeners();
-    });
+
+      final snapshot = await FirebaseFirestore.instance
+          .collection('parkingLogs')
+          .limit(100)
+          .get(const GetOptions(source: Source.serverAndCache));
+
+      final parsed = <ParkingLog>[];
+      int rawCount = snapshot.docs.length;
+      if (rawCount == 0) {
+        lastLogParseError =
+            'Snapshot is completely empty (0 documents fetched)';
+      }
+      for (final doc in snapshot.docs) {
+        try {
+          final data = doc.data();
+          parsed.add(ParkingLog.fromMap({...data, 'id': doc.id}));
+        } catch (e) {
+          logsSkippedCount++;
+          lastLogParseError = e.toString();
+          debugPrint('⚠️ Skipping bad log doc ${doc.id}: $e');
+        }
+      }
+      parsed.sort((a, b) => b.timestamp.compareTo(a.timestamp));
+      _logs = parsed.take(50).toList();
+      debugPrint('📋 Logs loaded: ${_logs.length} entries');
+      notifyListeners();
+    } catch (e) {
+      logStreamError = 'ERROR: $e';
+      notifyListeners();
+    }
 
     // Active Reservation for this user
     _resSub = FirebaseFirestore.instance
@@ -161,16 +226,26 @@ class ParkingProvider extends ChangeNotifier {
         .doc('${_currentUser!.uid}_active')
         .snapshots()
         .listen((doc) {
-      debugPrint('🔔 RES LISTENER — exists: ${doc.exists}, data: ${doc.data()}');
+      debugPrint(
+          '🔔 RES LISTENER — exists: ${doc.exists}, data: ${doc.data()}');
       if (doc.exists && doc.data() != null) {
         final data = doc.data()!;
-<<<<<<< HEAD
         try {
           final parsed = _parseReservation(doc.id, data);
           if (parsed != null) {
-            _activeReservation = parsed;
-            reservationParseError = null;
-            debugPrint('✅ Parsed OK — remaining: ${_activeReservation!.remaining}');
+            // Once they arrive, we no longer need to track the active reservation
+            // visually as an ActiveCard on their phone.
+            if (parsed.status == ReservationStatus.arrived) {
+              _activeReservation = null;
+              reservationParseError = null;
+              debugPrint(
+                  '✅ Arrived — ignoring reservation document so card disappears');
+            } else {
+              _activeReservation = parsed;
+              reservationParseError = null;
+              debugPrint(
+                  '✅ Parsed OK — remaining: ${_activeReservation!.remaining}');
+            }
           }
         } catch (e) {
           debugPrint('❌ PARSE ERROR: $e');
@@ -179,41 +254,33 @@ class ParkingProvider extends ChangeNotifier {
         }
 
         // ─── Lazy Cleanup ──────────────────────────────────────────────────
-        if (_activeReservation != null && _activeReservation!.remaining == Duration.zero) {
+        if (_activeReservation != null &&
+            _activeReservation!.remaining == Duration.zero &&
+            _activeReservation!.status != ReservationStatus.arrived) {
           debugPrint('⏰ Expired immediately — cleaning up');
-=======
-        _activeReservation = Reservation(
-          id: doc.id,
-          slotId: data['slotId'],
-          slotNumber: data['slotNumber'],
-          userId: data['userId'],
-          userName: data['userName'],
-          startTime: (data['startTime'] as Timestamp?)?.toDate() ?? DateTime.now(),
-          expiresAt: DateTime.parse(data['expiresAt']),
-          status: ReservationStatus.active,
-          otp: data['otp'],
-        );
 
-        // ─── Lazy Cleanup ──────────────────────────────────────────────────
-        // If app just fetched this but it's already expired, clean it up NOW.
-        if (_activeReservation!.remaining == Duration.zero) {
->>>>>>> 9ede775032aa32cf38300adae5899ef150f0ecce
-           _service.expireReservation(
+          if (_currentUser != null) {
+            final today = DateTime.now().toIso8601String().split('T')[0];
+            final newCount = (_currentUser!.lastFailedDate == today)
+                ? _currentUser!.failedReservations + 1
+                : 1;
+            _currentUser = _currentUser!
+                .copyWith(failedReservations: newCount, lastFailedDate: today);
+          }
+
+          _service
+              .expireReservation(
             slotId: _activeReservation!.slotId,
             slotNumber: _activeReservation!.slotNumber,
             user: _currentUser!,
-<<<<<<< HEAD
-          ).catchError((e) {
+          )
+              .catchError((e) {
             reservationParseError = 'Cleanup Error: $e';
             notifyListeners();
           });
           _activeReservation = null;
         } else if (_activeReservation != null) {
           debugPrint('✅ ACTIVE — card should show now');
-=======
-          );
-        } else {
->>>>>>> 9ede775032aa32cf38300adae5899ef150f0ecce
           _startExpiryTimer();
         }
       } else {
@@ -237,8 +304,8 @@ class ParkingProvider extends ChangeNotifier {
     });
 
     _exitBarrierSub = _service.getExitBarrierStream().listen((isOpen) {
-       _exitBarrierOpen = isOpen;
-       notifyListeners();
+      _exitBarrierOpen = isOpen;
+      notifyListeners();
     });
   }
 
@@ -254,6 +321,14 @@ class ParkingProvider extends ChangeNotifier {
       return fallback;
     }
 
+    ReservationStatus parseStatus(String? statusStr) {
+      if (statusStr == 'arrived') return ReservationStatus.arrived;
+      if (statusStr == 'completed') return ReservationStatus.completed;
+      if (statusStr == 'cancelled') return ReservationStatus.cancelled;
+      if (statusStr == 'expired') return ReservationStatus.expired;
+      return ReservationStatus.active; // default
+    }
+
     return Reservation(
       id: docId,
       slotId: data['slotId'] ?? '',
@@ -261,8 +336,9 @@ class ParkingProvider extends ChangeNotifier {
       userId: data['userId'] ?? '',
       userName: data['userName'] ?? 'User',
       startTime: parseDate(data['startTime'], fallback: DateTime.now()),
-      expiresAt: parseDate(data['expiresAt'], fallback: DateTime.now().add(const Duration(minutes: 15))),
-      status: ReservationStatus.active,
+      expiresAt: parseDate(data['expiresAt'],
+          fallback: DateTime.now().add(const Duration(minutes: 15))),
+      status: parseStatus(data['status']?.toString()),
       otp: data['otp']?.toString(),
     );
   }
@@ -275,7 +351,18 @@ class ParkingProvider extends ChangeNotifier {
         _expiryTimer?.cancel();
         return;
       }
-      if (_activeReservation!.remaining == Duration.zero) {
+      if (_activeReservation!.remaining == Duration.zero &&
+          _activeReservation!.status != ReservationStatus.arrived) {
+        // Increment locally so it restricts right away
+        if (_currentUser != null) {
+          final today = DateTime.now().toIso8601String().split('T')[0];
+          final newCount = (_currentUser!.lastFailedDate == today)
+              ? _currentUser!.failedReservations + 1
+              : 1;
+          _currentUser = _currentUser!
+              .copyWith(failedReservations: newCount, lastFailedDate: today);
+        }
+
         _service.expireReservation(
           slotId: _activeReservation!.slotId,
           slotNumber: _activeReservation!.slotNumber,
@@ -303,11 +390,19 @@ class ParkingProvider extends ChangeNotifier {
   /// Step 1: Request an OTP before reservation
   Future<String> requestOtp() async {
     if (_currentUser == null) throw Exception('Not logged in.');
+    if (isUserCurrentlyOccupyingOrReserved) {
+      throw Exception(
+          'You already have an active reservation or are occupying a slot.');
+    }
+    if (_currentUser!.hasReachedDailyLimit()) {
+      throw Exception(
+          'Reservation limit reached. You have accumulated 3 no-shows today.');
+    }
     final email = _currentUser!.email;
-    if (email == null || email.isEmpty) {
+    if (email.isEmpty) {
       throw Exception('User email not found. Please update your profile.');
     }
-    
+
     final otp = await _otpService.createAndStoreOtp(_currentUser!.uid, email);
     _pendingOtp = otp;
     notifyListeners();
@@ -315,9 +410,14 @@ class ParkingProvider extends ChangeNotifier {
   }
 
   /// Step 2: Verify OTP and create reservation if valid
-  Future<String?> verifyOtpAndReserve(ParkingSlot slot, String enteredOtp) async {
+  Future<String?> verifyOtpAndReserve(ParkingSlot slot, String enteredOtp,
+      [CarModel? selectedCar]) async {
     if (_currentUser == null) return 'Not logged in.';
-    if (hasActiveReservation) return 'You already have an active reservation.';
+    if (isUserCurrentlyOccupyingOrReserved)
+      return 'You already have an active reservation or are occupying a slot.';
+    if (_currentUser!.hasReachedDailyLimit()) {
+      return 'Reservation limit reached. You have accumulated 3 no-shows today.';
+    }
 
     _setLoading(true);
     try {
@@ -328,7 +428,11 @@ class ParkingProvider extends ChangeNotifier {
       }
 
       // OTP verified → create reservation
-      await _service.reserve(slot: slot, user: _currentUser!, otp: enteredOtp);
+      await _service.reserve(
+          slot: slot,
+          user: _currentUser!,
+          otp: enteredOtp,
+          selectedCar: selectedCar);
       _pendingOtp = null;
 
       // ─── DIRECT UI UPDATE ─────────────────────────────────────────────
@@ -342,12 +446,14 @@ class ParkingProvider extends ChangeNotifier {
         userId: _currentUser!.uid,
         userName: _currentUser!.name,
         startTime: now,
-        expiresAt: now.add(const Duration(minutes: AppStrings.reservationMinutes)),
+        expiresAt:
+            now.add(const Duration(minutes: AppStrings.reservationMinutes)),
         status: ReservationStatus.active,
         otp: enteredOtp,
       );
       _startExpiryTimer();
-      debugPrint('✅ DIRECT SET — activeReservation for slot ${slot.slotNumber}');
+      debugPrint(
+          '✅ DIRECT SET — activeReservation for slot ${slot.slotNumber}');
       // ─────────────────────────────────────────────────────────────────
 
       return null; // success
@@ -401,6 +507,9 @@ class ParkingProvider extends ChangeNotifier {
         slotNumber: _activeReservation!.slotNumber,
         user: _currentUser!,
       );
+      // Completely clear the active reservation locally so the UI card disappears
+      // and we just show them a popup notification instead.
+      _activeReservation = null;
     } catch (e) {
       _error = e.toString();
     } finally {
@@ -416,7 +525,8 @@ class ParkingProvider extends ChangeNotifier {
     await _service.openBarrier(_currentUser!);
 
     _barrierTimer?.cancel();
-    _barrierTimer = Timer(const Duration(seconds: AppStrings.barrierAutoCloseSeconds), () {
+    _barrierTimer =
+        Timer(const Duration(seconds: AppStrings.barrierAutoCloseSeconds), () {
       _barrierOpen = false;
       notifyListeners();
     });

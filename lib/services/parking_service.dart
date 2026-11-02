@@ -12,31 +12,32 @@ class ParkingService {
 
   // ─── Collection references ────────────────────────────────────────────────
   // NOTE: firmware uses these same collection/doc names
-  CollectionReference get _slotsRef       => _db.collection('slots');
-  CollectionReference get _logsRef        => _db.collection('parkingLogs');
+  CollectionReference get _slotsRef => _db.collection('slots');
+  CollectionReference get _logsRef => _db.collection('parkingLogs');
   CollectionReference get _reservationsRef => _db.collection('reservations');
-  DocumentReference   get _barrierRef     => _db.collection('barrier').doc('gate');
+  DocumentReference get _barrierRef => _db.collection('barrier').doc('gate');
 
   // ─── Streams ──────────────────────────────────────────────────────────────
 
   Stream<List<ParkingSlot>> getSlotsStream() {
     return _slotsRef.orderBy('slotNumber').snapshots().map(
-      (snapshot) => snapshot.docs
-          .map((doc) => ParkingSlot.fromMap({...doc.data() as Map<String, dynamic>, 'id': doc.id}))
-          .toList(),
-    );
+          (snapshot) => snapshot.docs
+              .map((doc) => ParkingSlot.fromMap(
+                  {...doc.data() as Map<String, dynamic>, 'id': doc.id}))
+              .toList(),
+        );
   }
 
   Stream<List<ParkingLog>> getLogsStream() {
-    return _logsRef
-        .orderBy('timestamp', descending: true)
-        .limit(50)
-        .snapshots()
-        .map(
-          (snapshot) => snapshot.docs
-              .map((doc) => ParkingLog.fromMap({...doc.data() as Map<String, dynamic>, 'id': doc.id}))
-              .toList(),
-        );
+    return _logsRef.limit(100).snapshots().map((snapshot) {
+      final logs = snapshot.docs
+          .map((doc) => ParkingLog.fromMap(
+              {...doc.data() as Map<String, dynamic>, 'id': doc.id}))
+          .toList();
+      // Sort locally — avoids needing a Firestore index
+      logs.sort((a, b) => b.timestamp.compareTo(a.timestamp));
+      return logs.take(50).toList();
+    });
   }
 
   // Barrier stream — app UI listens to this to show barrier state
@@ -50,7 +51,7 @@ class ParkingService {
   Stream<bool> getExitBarrierStream() {
     return _db.collection('barrier').doc('exit').snapshots().map((doc) {
       if (!doc.exists) return false;
-      return (doc.data() as Map<String, dynamic>?)?['isOpen'] ?? false;
+      return (doc.data())?['isOpen'] ?? false;
     });
   }
 
@@ -69,11 +70,32 @@ class ParkingService {
     required ParkingSlot slot,
     required UserModel user,
     required String otp,
+    CarModel? selectedCar,
   }) async {
     // 1. Check user doesn't already have an active reservation
     final existingRes = await _reservationsRef.doc('${user.uid}_active').get();
     if (existingRes.exists) {
-      throw Exception('You already have an active reservation.');
+      final resData = existingRes.data() as Map<String, dynamic>?;
+      final prevSlotId = resData?['slotId'] as String?;
+
+      bool isStale = false;
+      if (prevSlotId != null) {
+        final prevSlotDoc = await _slotsRef.doc(prevSlotId).get();
+        final prevSlotData = prevSlotDoc.data() as Map<String, dynamic>?;
+        // If the slot is available, or reserved by someone else, our active reservation is stale.
+        if (prevSlotData?['status'] == SlotStatus.available.name ||
+            prevSlotData?['userId'] != user.uid) {
+          isStale = true;
+        }
+      } else {
+        isStale = true; // Corrupted doc
+      }
+
+      if (isStale) {
+        await _reservationsRef.doc('${user.uid}_active').delete();
+      } else {
+        throw Exception('You already have an active reservation.');
+      }
     }
 
     // 2. Check slot is still available
@@ -84,15 +106,21 @@ class ParkingService {
     }
 
     final now = DateTime.now();
-    final expiresAt = now.add(const Duration(minutes: AppStrings.reservationMinutes));
+    final expiresAt =
+        now.add(const Duration(minutes: AppStrings.reservationMinutes));
 
     final batch = _db.batch();
 
     // 3. Update slot status → "reserved"
+    final carToUse =
+        selectedCar ?? (user.cars.isNotEmpty ? user.cars.first : null);
     batch.update(_slotsRef.doc(slot.id), {
       'status': SlotStatus.reserved.name,
       'userId': user.uid,
       'reservedByName': user.name,
+      'reservedByPlate': carToUse?.plateNumber,
+      'reservedByCarModel':
+          carToUse != null ? '${carToUse.color} ${carToUse.model}' : null,
     });
 
     // 4. Create active reservation doc
@@ -135,6 +163,8 @@ class ParkingService {
       'status': SlotStatus.available.name,
       'userId': null,
       'reservedByName': null,
+      'reservedByPlate': null,
+      'reservedByCarModel': null,
     });
 
     // 2. Delete active reservation
@@ -204,9 +234,21 @@ class ParkingService {
       'status': SlotStatus.available.name,
       'userId': null,
       'reservedByName': null,
+      'reservedByPlate': null,
+      'reservedByCarModel': null,
     });
 
     batch.delete(_reservationsRef.doc('${user.uid}_active'));
+
+    // Handle daily limit logic
+    final today = DateTime.now().toIso8601String().split('T')[0];
+    final int newFailCount =
+        (user.lastFailedDate == today) ? user.failedReservations + 1 : 1;
+
+    batch.update(_db.collection('users').doc(user.uid), {
+      'failedReservations': newFailCount,
+      'lastFailedDate': today,
+    });
 
     batch.set(_logsRef.doc(_uuid.v4()), {
       'action': 'Slot $slotNumber reservation expired for ${user.name}',
@@ -229,9 +271,11 @@ class ParkingService {
       'status': SlotStatus.available.name,
       'userId': null,
       'reservedByName': null,
+      'reservedByPlate': null,
+      'reservedByCarModel': null,
     });
 
-    // Note: Since this is a passive cleanup (e.g. car left), we don't always 
+    // Note: Since this is a passive cleanup (e.g. car left), we don't always
     // have the userId/Name easily without fetching. We'll log it as a general reset.
     batch.set(_logsRef.doc(_uuid.v4()), {
       'action': 'Slot reset to available (passive cleanup)',
@@ -248,23 +292,32 @@ class ParkingService {
   /// Open the entrance barrier.
   /// ESP32 polls barrier/gate every ~1.5s (nominal). The ESP32 resets isOpen
   /// to false after reading it.
-  Future<void> openBarrier(UserModel user, {String barrierType = 'gate'}) async {
+  Future<void> openBarrier(UserModel user,
+      {String barrierType = 'gate'}) async {
     // We'll use 'gate' for entrance by default
-    await _db.collection('barrier').doc(barrierType).set({'isOpen': true}, SetOptions(merge: true));
+    await _db
+        .collection('barrier')
+        .doc(barrierType)
+        .set({'isOpen': true}, SetOptions(merge: true));
     await logBarrier(user, true, barrierType: barrierType);
 
     // Safety fallback
     Future.delayed(
       const Duration(seconds: AppStrings.barrierAutoCloseSeconds),
       () async {
-        await _db.collection('barrier').doc(barrierType).set({'isOpen': false}, SetOptions(merge: true));
+        await _db
+            .collection('barrier')
+            .doc(barrierType)
+            .set({'isOpen': false}, SetOptions(merge: true));
       },
     );
   }
 
-  Future<void> logBarrier(UserModel user, bool opened, {String barrierType = 'gate'}) async {
+  Future<void> logBarrier(UserModel user, bool opened,
+      {String barrierType = 'gate'}) async {
     await _logsRef.add({
-      'action': 'Barrier ${barrierType.toUpperCase()} ${opened ? "opened" : "closed"} by ${user.name}',
+      'action':
+          'Barrier ${barrierType.toUpperCase()} ${opened ? "opened" : "closed"} by ${user.name}',
       'slotId': '',
       'slotNumber': 0,
       'userId': user.uid,

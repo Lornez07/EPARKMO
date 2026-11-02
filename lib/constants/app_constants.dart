@@ -29,7 +29,7 @@ class AppColors {
   // Text
   static const Color textPrimary = Color(0xFFE8F4F8);
   static const Color textSecondary = Color(0xFF8BA5BE);
-  static const Color textMuted = Color(0xFF4A6278);
+  static const Color textMuted = Color(0xFF7E97AE);
 
   // Misc
   static const Color success = Color(0xFF27AE60);
@@ -42,7 +42,7 @@ class AppColors {
 class AppDecorations {
   static BoxDecoration glassCard({
     double opacity = 0.12,
-    double borderRadius = 20,
+    double borderRadius = AppRadius.lg,
     Color? borderColor,
   }) {
     return BoxDecoration(
@@ -55,7 +55,7 @@ class AppDecorations {
     );
   }
 
-  static BoxDecoration primaryGlassCard({double borderRadius = 20}) {
+  static BoxDecoration primaryGlassCard({double borderRadius = AppRadius.lg}) {
     return BoxDecoration(
       gradient: LinearGradient(
         begin: Alignment.topLeft,
@@ -83,44 +83,45 @@ class AppDecorations {
 // ─── Text Styles ─────────────────────────────────────────────────────────────
 class AppTextStyles {
   static TextStyle get displayLarge => GoogleFonts.outfit(
-        fontSize: 32,
+        fontSize: 40,
         fontWeight: FontWeight.w700,
         color: AppColors.textPrimary,
         letterSpacing: -0.5,
       );
 
   static TextStyle get displayMedium => GoogleFonts.outfit(
-        fontSize: 24,
-        fontWeight: FontWeight.w600,
+        fontSize: 28,
+        fontWeight: FontWeight.w700,
         color: AppColors.textPrimary,
+        letterSpacing: -0.5,
       );
 
   static TextStyle get headingMedium => GoogleFonts.outfit(
-        fontSize: 18,
+        fontSize: 20,
         fontWeight: FontWeight.w600,
         color: AppColors.textPrimary,
       );
 
   static TextStyle get headingSmall => GoogleFonts.outfit(
-        fontSize: 15,
-        fontWeight: FontWeight.w500,
+        fontSize: 16,
+        fontWeight: FontWeight.w600,
         color: AppColors.textPrimary,
       );
 
   static TextStyle get bodyLarge => GoogleFonts.inter(
-        fontSize: 15,
+        fontSize: 14,
         fontWeight: FontWeight.w400,
         color: AppColors.textPrimary,
       );
 
   static TextStyle get bodyMedium => GoogleFonts.inter(
-        fontSize: 13,
+        fontSize: 14,
         fontWeight: FontWeight.w400,
         color: AppColors.textSecondary,
       );
 
   static TextStyle get bodySmall => GoogleFonts.inter(
-        fontSize: 11,
+        fontSize: 12,
         fontWeight: FontWeight.w400,
         color: AppColors.textMuted,
       );
@@ -155,21 +156,22 @@ class AppTheme {
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
         fillColor: AppColors.glassDark,
-        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        contentPadding:
+            const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
         border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(14),
+          borderRadius: BorderRadius.circular(AppRadius.md),
           borderSide: const BorderSide(color: AppColors.glassBorder),
         ),
         enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(14),
+          borderRadius: BorderRadius.circular(AppRadius.md),
           borderSide: const BorderSide(color: AppColors.glassBorder),
         ),
         focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(14),
+          borderRadius: BorderRadius.circular(AppRadius.md),
           borderSide: const BorderSide(color: AppColors.primary, width: 1.5),
         ),
         errorBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(14),
+          borderRadius: BorderRadius.circular(AppRadius.md),
           borderSide: const BorderSide(color: AppColors.error),
         ),
         labelStyle: AppTextStyles.bodyMedium,
@@ -179,7 +181,8 @@ class AppTheme {
         style: ElevatedButton.styleFrom(
           backgroundColor: AppColors.primary,
           foregroundColor: AppColors.white,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+          shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(AppRadius.md)),
           padding: const EdgeInsets.symmetric(vertical: 14),
           textStyle: AppTextStyles.labelLarge,
           elevation: 0,
@@ -196,6 +199,45 @@ class AppTheme {
   }
 }
 
+// ─── Layout ──────────────────────────────────────────────────────────────────
+class AppLayout {
+  /// Width at which the bottom nav is replaced by a left rail.
+  static const double railBreakpoint = 1000;
+
+  /// Maximum width of tab content. Wider viewports get centered gutters.
+  static const double contentMaxWidth = 1120;
+
+  static const double railWidth = 232;
+
+  /// Auth forms never stretch past this width.
+  static const double formMaxWidth = 460;
+
+  /// Space reserved for the floating bottom nav on mobile.
+  static const double bottomNavInset = 120;
+}
+
+/// Radius scale. Surfaces only; hairlines and progress bars use [xs].
+class AppRadius {
+  static const double xs = 4;
+  static const double md = 12;
+  static const double lg = 16;
+  static const double xl = 24;
+}
+
+/// Spacing scale. Every gap, gutter, and pad is one of these.
+class AppSpacing {
+  static const double xs = 4;
+  static const double sm = 8;
+  static const double md = 12;
+  static const double lg = 16;
+  static const double xl = 24;
+  static const double xxl = 32;
+  static const double xxxl = 48;
+
+  static const double page = 20;
+  static const double cardPadding = 16;
+}
+
 // ─── App Strings ─────────────────────────────────────────────────────────────
 class AppStrings {
   static const String appName = 'E-Park Mo';
@@ -207,7 +249,7 @@ class AppStrings {
   static const String adminEmail = 'admin@epark.com';
   static const String adminPass = 'admin123';
 
-  static const int reservationMinutes = 15;
+  static const int reservationMinutes = 2;
   static const int barrierAutoCloseSeconds = 10;
   static const double occupiedDistanceCm = 20.0;
   static const int totalSlots = 6;
@@ -219,9 +261,10 @@ class AppStrings {
   // Email OTP Config (Universal Web/Mobile - Free)
   // 1. Setup script.google.com with the code provided
   // 2. Paste your "Web App URL" here:
-  static const String googleScriptUrl = 'https://script.google.com/macros/s/AKfycbzzMajz2aWsgM4_XMoq8PN47oSAKhjRuSHLCYhS_vToLkqYMH6KHW91cFhbTLUVwPpNnw/exec';
+  static const String googleScriptUrl =
+      'https://script.google.com/macros/s/AKfycbzzMajz2aWsgM4_XMoq8PN47oSAKhjRuSHLCYhS_vToLkqYMH6KHW91cFhbTLUVwPpNnw/exec';
 
   // [LEGACY] SMTP Config (No longer used, keep for reference)
-  // static const String smtpEmail = 'lorenzstrll@gmail.com'; 
+  // static const String smtpEmail = 'lorenzstrll@gmail.com';
   // static const String smtpPassword = 'wgmowpupwzibhimc';
 }
